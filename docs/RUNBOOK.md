@@ -47,12 +47,15 @@ The second repo is the ScummVM fork:
 
 ```
 https://github.com/rabengraph/scummvm.git
-branch: claude/scummvm-agent-harness-DKVxd
+branch: develop
 ```
 
-The fork adds the telemetry bridge (see its
-`engines/scumm/AGENT_HARNESS.md`) and tweaks a few backend files so
-the Emscripten build can live-stream room state to JS.
+`master` on the fork is kept as a pristine mirror of upstream
+ScummVM. All of the POC's agent-telemetry work lives on `develop`,
+which is what `scripts/build-scummvm.sh` clones and builds. The fork
+adds the telemetry bridge (see its `engines/scumm/AGENT_HARNESS.md`)
+and tweaks a few backend files so the Emscripten build can
+live-stream room state to JS.
 
 ## Prerequisites
 
@@ -181,7 +184,7 @@ After this, `web/public/scummvm/` holds `scummvm.js` and
   `<emscripten.h>`. The fix is already committed to the fork (commit
   `84cf5626`, `#define FORBIDDEN_SYMBOL_ALLOW_ALL` at the top of
   that file). If you're on an older branch, cherry-pick that commit
-  or rebase onto the tip of `claude/scummvm-agent-harness-DKVxd`.
+  or rebase onto the tip of `develop`.
 - `_emscripten_webgl_*` link errors: emsdk is too old. Upgrade to
   the 4.x series.
 - No `dist-emscripten` target: fork is too old. Update the branch.

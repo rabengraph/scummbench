@@ -15,9 +15,12 @@ A fork of ScummVM. Owns:
 It does **not** own the app shell, homepage, overlays, scripts, or
 deployment. Keep this repo narrow and mechanical.
 
-Working branch: **`claude/scummvm-agent-harness-DKVxd`**. The
-harness's `scripts/build-scummvm.sh` points at this by default via
-`SCUMMVM_AGENT_REMOTE` / `SCUMMVM_AGENT_BRANCH`.
+Working branch: **`develop`**. The fork's `master` stays as a
+pristine mirror of upstream ScummVM; all POC work lives on
+`develop`, which carries the agent-telemetry commits on top of
+upstream. The harness's `scripts/build-scummvm.sh` points at
+`develop` by default via `SCUMMVM_AGENT_REMOTE` /
+`SCUMMVM_AGENT_BRANCH`.
 
 ### Repo 2 — `agent-game-harness` (this repo)
 Owns everything the agent sees and everything needed to run the site:

@@ -183,6 +183,6 @@ window.__scummMock.clickObjectById(12)
 - The harness is static HTML/JS/CSS plus the Emscripten bundle.
 - The ScummVM runtime is expected under `/public/scummvm/scummvm.js`
   and is produced by `./scripts/build-scummvm.sh` from the `scummvm`
-  fork's `claude/scummvm-agent-harness-DKVxd` branch.
+  fork's `develop` branch.
 - If `/game` shows a "runtime not built" banner, the operator needs
   to build the fork — or run `/game?mock=1` to use fake telemetry.

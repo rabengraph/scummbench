@@ -9,7 +9,8 @@
 #   SCUMMVM_AGENT_REMOTE   git remote to clone
 #                          (default: https://github.com/rabengraph/scummvm.git)
 #   SCUMMVM_AGENT_BRANCH   branch to build
-#                          (default: claude/scummvm-agent-harness-DKVxd)
+#                          (default: develop — carries the agent-
+#                          telemetry commits on top of upstream master)
 #
 # See the fork's engines/scumm/AGENT_HARNESS.md for the full contract.
 
@@ -26,7 +27,7 @@ OUTPUT_DIR="$ROOT/web/public/scummvm"
 DATA_OUTPUT_DIR="$ROOT/web/data"
 
 REMOTE="${SCUMMVM_AGENT_REMOTE:-https://github.com/rabengraph/scummvm.git}"
-BRANCH="${SCUMMVM_AGENT_BRANCH:-claude/scummvm-agent-harness-DKVxd}"
+BRANCH="${SCUMMVM_AGENT_BRANCH:-develop}"
 
 log()  { printf "\033[1;36m[build-scummvm]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[build-scummvm]\033[0m %s\n" "$*" >&2; }

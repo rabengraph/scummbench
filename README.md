@@ -5,8 +5,7 @@ exposed to AI agents (e.g. Claude).
 
 This repo is the **app shell and deployment target** for an AI-agent proof
 of concept. It pairs with a ScummVM fork (`rabengraph/scummvm`, branch
-`claude/scummvm-agent-harness-DKVxd`) that adds telemetry hooks into
-the SCUMM engine.
+`develop`) that adds telemetry hooks into the SCUMM engine.
 
 The central question this POC tries to answer:
 
@@ -15,10 +14,11 @@ The central question this POC tries to answer:
 
 ## Repo split
 
-- **`rabengraph/scummvm`** (fork, branch
-  `claude/scummvm-agent-harness-DKVxd`) — SCUMM engine telemetry
-  hooks, C++ to JavaScript bridge, Emscripten target tweaks.
-  Canonical schema doc: `engines/scumm/AGENT_HARNESS.md`.
+- **`rabengraph/scummvm`** (fork, branch `develop`) — SCUMM engine
+  telemetry hooks, C++ to JavaScript bridge, Emscripten target
+  tweaks. The fork's `master` stays as a pristine mirror of upstream
+  ScummVM; all POC work lives on `develop`. Canonical schema doc:
+  `engines/scumm/AGENT_HARNESS.md`.
 - **`agent-game-harness`** (this repo) — homepage, `/game` route,
   overlays, state panel, mock mode, startup scripts, hosting config,
   and the Claude runbook.
