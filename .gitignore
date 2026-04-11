@@ -23,3 +23,11 @@ vendor/scummvm-agent/
 # Scummvm artifacts copied into the web tree
 web/public/scummvm/*
 !web/public/scummvm/.gitkeep
+
+# Scummvm runtime data tree (GUI themes, shaders, translations, plus
+# user-added games under games/). The non-game subtrees are populated
+# by `scripts/build-scummvm.sh` (which runs `make dist-emscripten`), and
+# the games subtree is user content (copyrighted — must never enter
+# git). Keep the dir via .gitkeep so the path resolves on a fresh clone.
+web/data/*
+!web/data/.gitkeep

@@ -269,7 +269,7 @@ function bootMock() {
   }
 
   function drawBackdrop() {
-    const canvas = document.getElementById("scumm-canvas");
+    const canvas = document.getElementById("canvas");
     if (!canvas || !canvas.getContext) return;
     const ctx = canvas.getContext("2d");
     canvas.width = ROOM_W;

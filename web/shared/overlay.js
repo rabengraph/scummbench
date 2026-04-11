@@ -16,7 +16,10 @@
 
 const stage = document.getElementById("scumm-stage");
 const overlay = document.getElementById("scumm-overlay");
-const canvas = document.getElementById("scumm-canvas");
+// Must be id="canvas" (not "scumm-canvas"): SDL3's emscripten backend
+// does document.querySelector("#canvas") when creating the WebGL
+// context, so scummvm.js is hardcoded to that id.
+const canvas = document.getElementById("canvas");
 
 // Default virtual size for classic SCUMM (v5/v6). If the snapshot
 // carries an explicit roomWidth/roomHeight we use that instead.
@@ -24,7 +27,45 @@ const DEFAULT_VIRTUAL_W = 320;
 const DEFAULT_VIRTUAL_H = 200;
 
 if (stage && overlay && canvas) {
+  // Visibility toggle. The overlay is a debug aid — it draws boxes and
+  // labels on top of the live render, which clutters the screen during
+  // normal play. Off by default; enable with ?overlay=1 in the URL, or
+  // press "O" at any time to toggle. State is stashed on window so it
+  // survives hot-swaps of this script during dev but not full reloads
+  // (which is the behavior we want — query param is the source of truth).
+  const initialVisible =
+    new URLSearchParams(window.location.search).get("overlay") === "1";
+  window.__scummOverlayVisible = initialVisible;
+  overlay.hidden = !initialVisible;
+
+  window.addEventListener("keydown", (e) => {
+    // Ignore when typing in an input/textarea/contenteditable.
+    const t = e.target;
+    if (
+      t &&
+      (t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable)
+    ) {
+      return;
+    }
+    if (e.key === "o" || e.key === "O") {
+      window.__scummOverlayVisible = !window.__scummOverlayVisible;
+      overlay.hidden = !window.__scummOverlayVisible;
+      // Re-render immediately so toggling on shows current state.
+      if (window.__scummOverlayVisible && window.__scummState) {
+        render(window.__scummState);
+      }
+    }
+  });
+
   function render(snapshot) {
+    // Skip DOM work entirely when the overlay is hidden. This keeps the
+    // snapshot → DOM render loop cheap during real gameplay.
+    if (!window.__scummOverlayVisible) {
+      overlay.innerHTML = "";
+      return;
+    }
     if (!snapshot) {
       overlay.innerHTML = "";
       return;

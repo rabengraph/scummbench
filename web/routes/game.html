@@ -23,7 +23,7 @@
       -->
       <section class="game__stage-wrap">
         <div id="scumm-stage" class="game__stage">
-          <canvas id="scumm-canvas" width="640" height="400"></canvas>
+          <canvas id="canvas" width="640" height="400"></canvas>
           <div id="scumm-overlay" class="game__overlay" aria-hidden="true"></div>
           <div id="scumm-missing" class="game__missing" hidden>
             <h2>ScummVM runtime not built</h2>
@@ -106,11 +106,57 @@
       We load it last so bridge.js has already installed
       window.__scummPublish. In ?mock=1 mode this load will 404 and
       the mock will have already hidden the missing-runtime banner.
+
+      Launch args: pass ?game=<id> to auto-detect a game previously
+      added via ./scripts/add-game.sh. The fork's custom pre-js (see
+      dists/emscripten/custom_shell-pre.js in the fork) reads launch
+      args from window.location.hash — one space-separated string —
+      and wipes Module["arguments"] unconditionally, so the URL hash
+      is the *only* way to feed args into the existing build. We
+      translate ?game=<id> into a hash string before loading
+      scummvm.js. With no ?game= param the launcher runs normally
+      and you can pick a game interactively.
     -->
     <script>
       (function loadScummvmRuntime() {
-        const isMock = new URLSearchParams(window.location.search).get("mock") === "1";
+        const params = new URLSearchParams(window.location.search);
+        const isMock = params.get("mock") === "1";
         if (isMock) return; // mock provides its own fake runtime
+
+        const gameId = params.get("game");
+        if (gameId) {
+          // /data is the fork's hardcoded DATA_PATH (see config.mk).
+          // --auto-detect scans the path and launches whatever game
+          // it detects, skipping the launcher.
+          const hashArgs = [
+            "--path=/data/games/" + encodeURIComponent(gameId),
+            "--auto-detect",
+          ].join(" ");
+          // Assign via history.replaceState so we don't trigger a
+          // hashchange listener on ourselves, and the fork's pre-js
+          // reads the same value when it runs moments later.
+          history.replaceState(
+            null,
+            "",
+            window.location.pathname +
+              window.location.search +
+              "#" +
+              hashArgs
+          );
+        }
+
+        // Point emscripten's Module.canvas at our canvas element, and
+        // also keep its id as "canvas" — SDL3's emscripten backend
+        // doesn't read Module.canvas when creating the WebGL context;
+        // it calls document.querySelector("#canvas") directly (see
+        // findCanvasEventTarget in the generated scummvm.js). So the
+        // element *must* have id="canvas" for SDL_GL_CreateContext to
+        // succeed. We keep Module.canvas set too because other
+        // emscripten helpers (Browser.getCanvas, fullscreen toggling,
+        // etc.) do read it.
+        window.Module = window.Module || {};
+        window.Module.canvas = document.getElementById("canvas");
+
         const s = document.createElement("script");
         s.src = "/public/scummvm/scummvm.js";
         s.async = true;

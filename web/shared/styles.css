@@ -149,7 +149,10 @@ pre {
   overflow: hidden;
 }
 
-#scumm-canvas {
+/* Scoped to .game__stage so the global id="canvas" (required by
+   scummvm.js's hardcoded SDL3 selector) doesn't style arbitrary
+   canvases elsewhere on the site. */
+.game__stage > #canvas {
   display: block;
   width: 100%;
   height: 100%;
