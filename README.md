@@ -12,6 +12,9 @@ The central question this POC tries to answer:
 > Does exposing symbolic SCUMM state in-browser materially improve an
 > agent's ability to play the game compared to pure vision?
 
+## Demo, Monkey Island played with Claude Code
+https://github.com/user-attachments/assets/93ca4e5c-ebd4-4981-bdaf-a3b48d802b82
+
 ## Repo split
 
 - **`rabengraph/scummvm`** (fork, branch `develop`) — SCUMM engine
