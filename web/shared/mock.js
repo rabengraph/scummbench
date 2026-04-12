@@ -40,30 +40,31 @@ function bootMock() {
       name: "Docks",
       color: "#13323e",
       // Coordinates are virtual-screen (320x200).
+      // Some names include @-padding to test the bridge's cleanName() stripping.
       objects: [
-        { id: 11, name: "rope",        box: { x:  20, y: 130, w:  40, h: 16 }, state: 0, untouchable: false },
-        { id: 12, name: "crate",       box: { x:  80, y: 120, w:  44, h: 34 }, state: 0, untouchable: false },
-        { id: 13, name: "door to ship",box: { x: 220, y:  60, w:  48, h:  80 }, state: 0, untouchable: false },
-        { id: 14, name: "sign",        box: { x: 140, y:  30, w:  60, h:  20 }, state: 0, untouchable: true  },
+        { id: 11, name: "rope@@@@@@@@",  box: { x:  20, y: 130, w:  40, h: 16 }, state: 0, untouchable: false },
+        { id: 12, name: "crate@@@",      box: { x:  80, y: 120, w:  44, h: 34 }, state: 0, untouchable: false },
+        { id: 13, name: "door to ship",  box: { x: 220, y:  60, w:  48, h:  80 }, state: 0, untouchable: false },
+        { id: 14, name: "sign@@@@@@",    box: { x: 140, y:  30, w:  60, h:  20 }, state: 0, untouchable: true  },
       ],
     },
     2: {
       name: "Ship Deck",
       color: "#1e2e1a",
       objects: [
-        { id: 21, name: "wheel",          box: { x: 150, y:  60, w:  30, h:  30 }, state: 0, untouchable: false },
-        { id: 22, name: "captain",        box: { x:  50, y:  90, w:  30, h:  60 }, state: 0, untouchable: false },
-        { id: 23, name: "chest",          box: { x: 240, y: 120, w:  44, h:  34 }, state: 0, untouchable: false },
-        { id: 24, name: "door to docks", box: { x:  10, y:  70, w:  30, h:  70 }, state: 0, untouchable: false },
+        { id: 21, name: "wheel@@@@",      box: { x: 150, y:  60, w:  30, h:  30 }, state: 0, untouchable: false },
+        { id: 22, name: "captain",         box: { x:  50, y:  90, w:  30, h:  60 }, state: 0, untouchable: false },
+        { id: 23, name: "chest@@@@@@@@",   box: { x: 240, y: 120, w:  44, h:  34 }, state: 0, untouchable: false },
+        { id: 24, name: "door to docks",   box: { x:  10, y:  70, w:  30, h:  70 }, state: 0, untouchable: false },
       ],
     },
     3: {
       name: "Captain's Cabin",
       color: "#2a1e33",
       objects: [
-        { id: 31, name: "map",         box: { x: 110, y:  90, w:  60, h:  34 }, state: 0, untouchable: false },
-        { id: 32, name: "bottle",      box: { x: 210, y: 110, w:  14, h:  30 }, state: 0, untouchable: false },
-        { id: 33, name: "door to deck",box: { x:  15, y:  60, w:  30, h:  80 }, state: 0, untouchable: false },
+        { id: 31, name: "map@@@@@@@@@",  box: { x: 110, y:  90, w:  60, h:  34 }, state: 0, untouchable: false },
+        { id: 32, name: "bottle@@@",     box: { x: 210, y: 110, w:  14, h:  30 }, state: 0, untouchable: false },
+        { id: 33, name: "door to deck",  box: { x:  15, y:  60, w:  30, h:  80 }, state: 0, untouchable: false },
       ],
     },
   };
@@ -76,6 +77,9 @@ function bootMock() {
     sentence: { verb: 0, preposition: 0, objectA: 0, objectB: 0, active: false },
     ego: { id: 1, x: 160, y: 140, facing: 270, walking: false },
     inventory: [],
+    haveMsg: 0,          // 0=none, 255=active, 1=ending
+    inputLocked: false,
+    inCutscene: false,
   };
 
   const nextSeq = () => ++state.seq;
@@ -135,7 +139,12 @@ function bootMock() {
       sentence: { ...state.sentence },
       roomObjects,
       inventory,
-      verbs: VERBS.map((v) => ({ ...v, box: { ...v.box } })),
+      verbs: VERBS.map((v) => ({ ...v, kind: v.kind || 0, box: { ...v.box } })),
+      walkBoxes: [],
+      haveMsg: state.haveMsg,
+      inputLocked: state.inputLocked,
+      inCutscene: state.inCutscene,
+      camera: { x: ROOM_W / 2 },
       mock: true,
     };
   }
@@ -330,6 +339,65 @@ function bootMock() {
       },
       state() {
         return JSON.parse(JSON.stringify(state));
+      },
+      // --- Test helpers for bridge-derived events ---
+      simulateMessage() {
+        // Simulate a message appearing then clearing (like actor talk)
+        state.haveMsg = 255;
+        publishSnapshot();
+        setTimeout(() => {
+          state.haveMsg = 1;
+          publishSnapshot();
+          setTimeout(() => {
+            state.haveMsg = 0;
+            publishSnapshot();
+          }, 800);
+        }, 1500);
+      },
+      simulateDialog() {
+        // Add dialog choice verbs (kind=2) to test dialogChoicesChanged
+        state.haveMsg = 255;
+        VERBS.push(
+          { slot: 20, id: 200, name: "I want to be a pirate.", box: { x: 0, y: 50, w: 200, h: 8 }, visible: true, kind: 2 },
+          { slot: 21, id: 201, name: "I want to be a fireman.", box: { x: 0, y: 60, w: 200, h: 8 }, visible: true, kind: 2 },
+          { slot: 22, id: 202, name: "I want to be a flooring inspector.", box: { x: 0, y: 70, w: 200, h: 8 }, visible: true, kind: 2 }
+        );
+        publishSnapshot();
+      },
+      clearDialog() {
+        // Remove dialog verbs and clear message
+        state.haveMsg = 0;
+        while (VERBS.length > 8) VERBS.pop();
+        publishSnapshot();
+      },
+      simulateWalk(targetX, targetY) {
+        // Simulate ego walking to a target then arriving
+        state.ego.walking = true;
+        publishSnapshot();
+        const steps = 5;
+        const dx = (targetX - state.ego.x) / steps;
+        const dy = (targetY - state.ego.y) / steps;
+        let step = 0;
+        const interval = setInterval(() => {
+          step++;
+          state.ego.x = Math.round(state.ego.x + dx);
+          state.ego.y = Math.round(state.ego.y + dy);
+          if (step >= steps) {
+            state.ego.walking = false;
+            clearInterval(interval);
+          }
+          publishSnapshot();
+        }, 200);
+      },
+      simulateCutscene() {
+        state.inCutscene = true;
+        state.inputLocked = true;
+        publishSnapshot();
+        setTimeout(() => {
+          state.inCutscene = false;
+          state.inputLocked = false;
+          publishSnapshot();
+        }, 2000);
       },
     };
   }

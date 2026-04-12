@@ -151,26 +151,35 @@
   "stateSources": {
     "window": "__scummState",
     "domNodeId": "scumm-state",
-    "readHelper": "__scummRead",
-    "historyHelper": "__scummHistory",
-    "eventsHelper": "__scummEvents",
+    "readHelper": "__scummRead()",
+    "historyHelper": "__scummHistory()",
+    "eventsHelper": "__scummEvents()",
+    "eventsSinceHelper": "__scummEventsSince(seq) → { events, cursor }",
     "customEvents": ["scumm:state", "scumm:event"],
-    "consoleTags": ["SCUMM_STATE", "SCUMM_EVENT"]
+    "consoleTags": ["SCUMM_STATE", "SCUMM_EVENT"],
+    "notes": [
+      "Use __scummEventsSince(cursor) for incremental event reads. Store the returned cursor and pass it on the next call to get only new events.",
+      "Event buffer holds 256 entries. Engine events have numeric kind (1-5). Bridge-derived events have string kind (messageStateChanged, dialogChoicesChanged, roomEntered, inputLockChanged, cutsceneChanged, egoArrived).",
+      "Object/verb names are auto-cleaned (no @ padding)."
+    ]
   },
   "actionApi": {
+    "doSentence": "__scummDoSentence({ verb, objectA, objectB })",
+    "skipMessage": "__scummSkipMessage()",
+    "walkTo": "__scummWalkTo(x, y)",
     "clickVerb": "__scummClickVerb(verbId)",
     "clickObject": "__scummClickObject(objectId)",
     "clickAt": "__scummClickAt(x, y)",
-    "walkTo": "__scummWalkTo(x, y)",
-    "doSentence": "__scummDoSentence({ verb, objectA, objectB })",
     "ready": "__scummActionsReady()",
     "notes": [
-      "clickObject is the preferred way to interact with objects (bypasses coordinate conversion).",
-      "clickVerb works for both action verbs and dialog choices.",
-      "doSentence combines verb + objects with proper timing.",
-      "Dialog choices appear in verbs[] when haveMsg != 0.",
-      "camera.x is the viewport center (not left edge); to convert room->screen: screen_x = room_x - camera.x + 160.",
-      "Check __scummActionsReady() before calling action functions."
+      "doSentence is the PREFERRED action method. It queues verb+object(s) atomically into the engine's sentence stack. No timing issues.",
+      "doSentence auto-walks ego to the target object — you don't need to walkTo first.",
+      "doSentence returns true if queued, false if engine not ready or sentence queue full.",
+      "clickVerb is for dialog choices (verbs with kind: 2).",
+      "skipMessage dismisses the current message/dialog text. Use it to advance through conversations. clickAt does NOT dismiss messages.",
+      "clickAt is a last resort — prefer doSentence or clickObject.",
+      "Check __scummActionsReady() before calling any action function.",
+      "After issuing an action, use __scummEventsSince() to detect the result rather than polling __scummState."
     ]
   },
   "schema": {
@@ -180,7 +189,7 @@
     "keyFields": [
       "room", "roomWidth", "roomHeight",
       "camera.x",
-      "haveMsg",
+      "haveMsg", "msgText", "talkingActor",
       "inputLocked", "inCutscene",
       "ego.pos.{x,y}", "ego.walking",
       "sentence.{verb,objectA,objectB,active}",
@@ -196,7 +205,9 @@
       "There is no pre-formatted sentenceLine; synthesize it from sentence + verbs + object names.",
       "hover.objectId == 0 means no hover target.",
       "camera.x is the viewport center; to convert room->screen: screen_x = room_x - camera.x + 160.",
-      "haveMsg: 0=no text, 255=text active (waiting for click), 1=text ending.",
+      "haveMsg: 0=no text, 255=text active (waiting for click), 1=text ending. Use skipMessage() to advance.",
+      "msgText: the currently displayed message string (empty when haveMsg=0). Read this instead of taking screenshots.",
+      "talkingActor: actor ID currently speaking (-1 or 255 if nobody).",
       "verbs[] includes dialog choices when haveMsg != 0.",
       "verbs[].kind: 0=action, 1=inventory, 2=dialog, 3=hidden.",
       "inputLocked: true when player input is disabled (_userPut == 0).",
@@ -206,14 +217,23 @@
     ]
   },
   "events": {
-    "envelope": { "kind": "int", "seq": "int", "t": "int", "payload": "object" },
-    "kinds": {
-      "1": "roomChanged",
-      "2": "hoverChanged",
-      "3": "inventoryChanged",
-      "4": "sentenceChanged",
-      "5": "egoMoved"
-    }
+    "envelope": { "kind": "int|string", "seq": "int", "t": "int", "payload": "object" },
+    "engineKinds": {
+      "1": "roomChanged → { from, to, resource }",
+      "2": "hoverChanged → { objectId, objectName, verbId }",
+      "3": "inventoryChanged → { count }",
+      "4": "sentenceChanged → { verb, objectA, objectB, active }",
+      "5": "egoMoved → { room, x, y, walking }"
+    },
+    "bridgeKinds": {
+      "messageStateChanged": "{ from, to, label, text?, talkingActor? } — label: started|ending|cleared, text is the message string",
+      "dialogChoicesChanged": "{ choices: [{verbId, name, slot, box}], count }",
+      "roomEntered": "{ from, to, objects: [{id, name}] }",
+      "inputLockChanged": "{ locked }",
+      "cutsceneChanged": "{ inCutscene }",
+      "egoArrived": "{ x, y, room }"
+    },
+    "notes": "Bridge events have source:'bridge'. Use __scummEventsSince(cursor) for incremental reads."
   },
   "policies": [
     "Prefer symbolic state first.",

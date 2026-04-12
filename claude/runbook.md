@@ -36,6 +36,153 @@ progress in the adventure game running there.
   combination fails twice, change approach rather than retrying a
   third time.
 
+## Action API
+
+Always check `__scummActionsReady()` before sending commands.
+
+### Primary actions
+
+| Function | Purpose |
+|---|---|
+| `__scummDoSentence({verb, objectA, objectB})` | **Preferred.** Execute a complete verb+object action atomically. Queues directly into the engine's sentence stack — no timing races. |
+| `__scummSkipMessage()` | Dismiss the current message/dialog text. Use to advance through conversations. `clickAt` does NOT dismiss messages. |
+| `__scummWalkTo(x, y)` | Walk ego to room coordinates. |
+| `__scummClickVerb(verbId)` | Select a verb. Use for dialog choices (verbs with `kind: 2`). |
+| `__scummClickObject(objectId)` | Click an object by ID (engine resolves position). |
+| `__scummClickAt(x, y)` | Click at room coordinates. Last resort — prefer `doSentence` or `clickObject`. |
+
+### How to perform common actions
+
+**Look at / Pick up / Use an object:**
+```js
+// Use doSentence — it's atomic and reliable.
+__scummDoSentence({ verb: 8, objectA: 429 })  // Look at poster
+__scummDoSentence({ verb: 9, objectA: 215 })  // Pick up meat
+__scummDoSentence({ verb: 7, objectA: 215, objectB: 310 })  // Use meat with stew
+```
+
+**Read and dismiss dialog text:**
+```js
+// When haveMsg == 255, a message is on screen. Read it from msgText:
+const s = __scummRead();
+if (s.haveMsg === 255) {
+  console.log(s.msgText);        // e.g. "Re-elect Governor Marley."
+  console.log(s.talkingActor);   // which actor is speaking (-1 if narration)
+  __scummSkipMessage();          // dismiss it to advance
+}
+// Or use the event stream — messageStateChanged events include the text:
+// { label: "started", text: "Re-elect Governor Marley.", talkingActor: 3 }
+```
+
+**Select a dialog choice:**
+```js
+// Dialog choices appear as verbs with kind: 2.
+// Read them from the state or from a dialogChoicesChanged event.
+__scummClickVerb(verbId)  // where verbId is from verbs[].id with kind=2
+```
+
+**Walk to a position:**
+```js
+__scummWalkTo(160, 130)
+// Poll ego.walking until false, or wait for an egoArrived event.
+```
+
+## Event log stream
+
+Instead of polling `__scummState` repeatedly, use the cursor-based
+event log to react to changes efficiently.
+
+### Reading events incrementally
+
+```js
+// Initialize cursor once
+let cursor = 0;
+
+// Catch up on everything that happened since last check
+const { events, cursor: next } = __scummEventsSince(cursor);
+cursor = next;
+
+// Process new events
+for (const ev of events) {
+  console.log(ev.kind, ev.payload);
+}
+```
+
+### Event kinds
+
+**Engine events** (from the C++ fork, share seq with snapshots):
+
+| `kind` | Name | Payload |
+|:---:|---|---|
+| 1 | `roomChanged` | `{ from, to, resource }` |
+| 2 | `hoverChanged` | `{ objectId, objectName, verbId }` |
+| 3 | `inventoryChanged` | `{ count }` |
+| 4 | `sentenceChanged` | `{ verb, objectA, objectB, active }` |
+| 5 | `egoMoved` | `{ room, x, y, walking }` — only on room change or walk-stop |
+
+**Bridge events** (derived in JS, have `source: "bridge"`):
+
+| `kind` | Name | Payload |
+|---|---|---|
+| `messageStateChanged` | Text display started/ended | `{ from, to, label, text?, talkingActor? }` — label is "started", "ending", or "cleared". `text` is the message string (when available). |
+| `dialogChoicesChanged` | Dialog options appeared/changed | `{ choices: [{verbId, name, slot, box}], count }` |
+| `roomEntered` | Player entered a new room | `{ from, to, objects: [{id, name}] }` |
+| `inputLockChanged` | Input enabled/disabled | `{ locked }` |
+| `cutsceneChanged` | Cutscene started/ended | `{ inCutscene }` |
+| `egoArrived` | Ego stopped walking | `{ x, y, room }` |
+
+### Other read helpers
+
+| Function | Returns |
+|---|---|
+| `__scummRead()` | Latest snapshot (same as `window.__scummState`) |
+| `__scummHistory()` | Array of last 64 snapshots |
+| `__scummEvents()` | Array of last 256 events (all types) |
+| `__scummEventsSince(seq)` | `{ events, cursor }` — only events newer than `seq` |
+
+## Navigation strategy
+
+Walking in SCUMM games uses a walkbox system — the room floor is
+divided into convex quadrilateral zones. The engine's pathfinder
+handles multi-box routes automatically, so **a single `__scummWalkTo(x, y)`
+to a far-away target usually works.** You do NOT need to step through
+walkboxes manually.
+
+### Recommended approach
+
+1. **Walk directly to the object.** Use the object's bounding box
+   center from `roomObjects[]`: target `x = box.x + box.w/2`,
+   `y = box.y + box.h` (bottom-center, since characters stand at
+   floor level).
+
+2. **Wait for arrival.** After calling `__scummWalkTo()`, poll
+   `ego.walking` or wait for an `egoArrived` event. Do not send
+   more commands while walking.
+
+3. **If ego stops short** (arrives but isn't close enough to the
+   object to interact), this usually means the walkbox near the
+   object is offset from it. Try walking to the object's `box.x`
+   with a `y` value closer to the ego's current `y` (stay on the
+   same walkbox row). Objects near walls/edges often need you to
+   stand slightly away from them.
+
+4. **For room exits / doors:** walk to the door object's coordinates.
+   Room transitions trigger automatically when ego reaches the exit
+   walkbox. Confirm with a `roomChanged` or `roomEntered` event.
+
+5. **Do NOT try to parse `walkBoxes[]` for pathfinding.** The engine
+   does that internally. Use walkboxes only to understand why ego
+   stopped at an unexpected position (check if the target was inside
+   a locked or invisible box).
+
+### Action-at-a-distance
+
+You don't need to walk to an object before interacting with it.
+`__scummDoSentence()` will cause ego to walk to the object
+automatically as part of executing the action. The engine handles
+the walk + interact sequence. Just issue the sentence and wait for
+the result.
+
 ## State schema you can expect (v1)
 
 The canonical definition lives in the fork's
@@ -113,21 +260,8 @@ The canonical definition lives in the fork's
 
 ### Events
 
-Events share a seq counter with snapshots:
-
-```jsonc
-{ "kind": 1, "seq": 1234, "t": 71234567, "payload": { ... } }
-```
-
-| `kind` | Name | Payload |
-|:---:|---|---|
-| 1 | `roomChanged` | `{ from, to, resource }` |
-| 2 | `hoverChanged` | `{ objectId, objectName, verbId }` |
-| 3 | `inventoryChanged` | `{ count }` |
-| 4 | `sentenceChanged` | `{ verb, objectA, objectB, active }` |
-| 5 | `egoMoved` | `{ room, x, y, walking }` — only on room change or walk-stop |
-
-Kinds 6 and 7 are reserved and not currently emitted.
+See the "Event log stream" section above for the full event reference
+and the cursor-based `__scummEventsSince(seq)` API.
 
 ## Debug aids
 
