@@ -42,7 +42,7 @@
       </section>
 
       <section class="brief__section">
-        <h2>State inspection</h2>
+        <h2>State inspection (read)</h2>
         <p>On <code>/game</code>, symbolic state is exposed via:</p>
         <ul>
           <li>
@@ -63,6 +63,36 @@
             inspection.
           </li>
         </ul>
+        <p>Key snapshot fields:</p>
+        <ul>
+          <li><code>camera.x</code> — scroll offset for room-to-screen coordinate conversion.</li>
+          <li><code>haveMsg</code> — text display state (0=none, 255=active, 1=ending).</li>
+          <li><code>verbs[]</code> — includes dialog choices when a conversation is active.</li>
+        </ul>
+      </section>
+
+      <section class="brief__section">
+        <h2>Action API (write)</h2>
+        <p>Agents can control the game via these functions on <code>/game</code>:</p>
+        <ul>
+          <li>
+            <code>__scummClickVerb(verbId)</code> — click a verb or dialog choice by ID.
+          </li>
+          <li>
+            <code>__scummClickAt(x, y)</code> — click at room coordinates.
+          </li>
+          <li>
+            <code>__scummWalkTo(x, y)</code> — walk ego to room coordinates.
+          </li>
+          <li>
+            <code>__scummActionsReady()</code> — check if action API is available.
+          </li>
+        </ul>
+        <p>
+          Coordinates are in room/virtual-screen space (same as snapshot).
+          To click an object, use its <code>box</code> center from <code>roomObjects[]</code>.
+          Dialog choices appear in <code>verbs[]</code> when <code>haveMsg != 0</code>.
+        </p>
       </section>
 
       <section class="brief__section">
@@ -106,7 +136,7 @@
     -->
     <script id="agent-brief" type="application/json">
 {
-  "version": 2,
+  "version": 3,
   "mission": "Navigate to /game and make progress in the adventure game.",
   "gameRoute": "/game",
   "statusRoute": "/status",
@@ -121,12 +151,27 @@
     "customEvents": ["scumm:state", "scumm:event"],
     "consoleTags": ["SCUMM_STATE", "SCUMM_EVENT"]
   },
+  "actionApi": {
+    "clickVerb": "__scummClickVerb(verbId)",
+    "clickAt": "__scummClickAt(x, y)",
+    "walkTo": "__scummWalkTo(x, y)",
+    "ready": "__scummActionsReady()",
+    "notes": [
+      "All coordinates are in room/virtual-screen space (same as snapshot).",
+      "clickVerb works for both action verbs and dialog choices.",
+      "Dialog choices appear in verbs[] when haveMsg != 0.",
+      "To click an object, use center of its box from roomObjects[].",
+      "Check __scummActionsReady() before calling action functions."
+    ]
+  },
   "schema": {
     "snapshotVersion": 1,
     "coordSpace": "virtual-screen (roomWidth x roomHeight, not canvas pixels)",
     "canonicalDoc": "scummvm-agent/engines/scumm/AGENT_HARNESS.md",
     "keyFields": [
       "room", "roomWidth", "roomHeight",
+      "camera.x",
+      "haveMsg",
       "ego.pos.{x,y}", "ego.walking",
       "sentence.{verb,objectA,objectB,active}",
       "hover.{objectId,objectName,verbId}",
@@ -139,6 +184,9 @@
       "untouchable == true means not clickable. Treat !untouchable as clickable.",
       "There is no pre-formatted sentenceLine; synthesize it from sentence + verbs + object names.",
       "hover.objectId == 0 means no hover target.",
+      "camera.x is the scroll offset; screen_x = room_x - camera.x.",
+      "haveMsg: 0=no text, 255=text active (waiting for click), 1=text ending.",
+      "verbs[] includes dialog choices when haveMsg != 0.",
       "Schema is additive; the bridge warns loudly if snapshot.schema > 1."
     ]
   },

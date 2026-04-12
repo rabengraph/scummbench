@@ -132,6 +132,107 @@ window.__scummEvents = function readScummEvents() {
   return state.events.slice();
 };
 
+// --------------------------------------------------------------------------
+// Action API — commands from agent to engine
+// --------------------------------------------------------------------------
+// These functions call into the WASM module's exported agent_* functions.
+// The Module object must be available (WASM loaded) for these to work.
+
+/**
+ * Click a verb by its ID. Works for both action verbs and dialog choices.
+ * @param {number} verbId - The verb ID from verbs[].id in the snapshot
+ * @returns {boolean} - true if the command was sent, false if Module not ready
+ */
+window.__scummClickVerb = function clickVerb(verbId) {
+  if (typeof Module === "undefined" || !Module._agent_click_verb) {
+    console.warn("[SCUMM_BRIDGE] Module not ready for clickVerb");
+    return false;
+  }
+  Module._agent_click_verb(verbId);
+  console.debug("[SCUMM_CMD] clickVerb", verbId);
+  return true;
+};
+
+/**
+ * Click at a position in room/virtual-screen coordinates.
+ * @param {number} x - X coordinate in room space
+ * @param {number} y - Y coordinate in room space
+ * @returns {boolean} - true if the command was sent
+ */
+window.__scummClickAt = function clickAt(x, y) {
+  if (typeof Module === "undefined" || !Module._agent_click_at) {
+    console.warn("[SCUMM_BRIDGE] Module not ready for clickAt");
+    return false;
+  }
+  Module._agent_click_at(x, y);
+  console.debug("[SCUMM_CMD] clickAt", x, y);
+  return true;
+};
+
+/**
+ * Walk ego to a position in room coordinates.
+ * @param {number} x - X coordinate in room space
+ * @param {number} y - Y coordinate in room space
+ * @returns {boolean} - true if the command was sent
+ */
+window.__scummWalkTo = function walkTo(x, y) {
+  if (typeof Module === "undefined" || !Module._agent_walk_to) {
+    console.warn("[SCUMM_BRIDGE] Module not ready for walkTo");
+    return false;
+  }
+  Module._agent_walk_to(x, y);
+  console.debug("[SCUMM_CMD] walkTo", x, y);
+  return true;
+};
+
+/**
+ * Execute a complete sentence: verb + object(s).
+ * This is a convenience wrapper that clicks the verb, then the object(s).
+ *
+ * @param {Object} options
+ * @param {number} options.verb - Verb ID to use
+ * @param {number} [options.objectA] - First object ID (optional)
+ * @param {number} [options.objectB] - Second object ID (optional, for two-object verbs)
+ * @returns {boolean} - true if commands were sent
+ *
+ * Note: This queues the actions but doesn't wait for them to complete.
+ * Use the snapshot's ego.walking and sentence fields to track progress.
+ */
+window.__scummDoSentence = function doSentence({ verb, objectA, objectB }) {
+  if (typeof Module === "undefined" || !Module._agent_click_verb) {
+    console.warn("[SCUMM_BRIDGE] Module not ready for doSentence");
+    return false;
+  }
+
+  // Click the verb first
+  Module._agent_click_verb(verb);
+
+  // If we have objects, we need to click on them
+  // For now, the agent should handle object clicking separately
+  // since we need object coordinates, not just IDs
+  console.debug("[SCUMM_CMD] doSentence verb:", verb, "objectA:", objectA, "objectB:", objectB);
+
+  // TODO: To fully implement this, we'd need either:
+  // 1. Object ID -> coordinates lookup (from snapshot roomObjects)
+  // 2. A new agent_click_object(objectId) C++ function
+  // For now, clicking the verb is the first step; agent handles objects.
+
+  return true;
+};
+
+/**
+ * Check if the action API is available (Module loaded with agent functions).
+ * @returns {boolean}
+ */
+window.__scummActionsReady = function actionsReady() {
+  return (
+    typeof Module !== "undefined" &&
+    typeof Module._agent_click_verb === "function" &&
+    typeof Module._agent_click_at === "function" &&
+    typeof Module._agent_walk_to === "function"
+  );
+};
+
 // In the absence of a fork build we still want the page to be useful
 // for development. Mirror any initial JSON in #scumm-state into
 // window.__scummState so overlay/panel/tests have something to chew on.
