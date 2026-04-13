@@ -43,7 +43,7 @@
         window.__scummPublish(snapshot) for each state update. If the
         fork build is missing, a banner explains how to build it.
       -->
-      <section class="game__stage-wrap">
+      <section class="game__stage-wrap game__stage-wrap--collapsed">
         <div id="scumm-stage" class="game__stage">
           <canvas id="canvas" width="640" height="400"></canvas>
           <div id="scumm-overlay" class="game__overlay" aria-hidden="true"></div>
@@ -56,11 +56,18 @@
             </p>
           </div>
         </div>
+        <button id="panel-toggle" class="panel__toggle" aria-label="Toggle state panel">state</button>
         <aside id="scumm-panel" class="game__panel" aria-live="polite">
           <!-- state-panel.js fills this -->
         </aside>
       </section>
     </main>
+
+    <script>
+      document.getElementById("panel-toggle").addEventListener("click", function () {
+        document.querySelector(".game__stage-wrap").classList.toggle("game__stage-wrap--collapsed");
+      });
+    </script>
 
     <!--
       Authoritative latest state, mirrored as JSON in the DOM.
