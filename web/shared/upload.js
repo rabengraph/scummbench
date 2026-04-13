@@ -74,6 +74,37 @@ function installInterceptor(fileMap, indexTree) {
       return Promise.resolve(new Response("", { status: 200 }));
     }
 
+    // The HTTP filesystem validates paths by walking parent directories.
+    // When the engine resolves --path=/data/games/uploaded it fetches
+    // /data/index.json and /data/games/index.json to confirm each path
+    // segment exists. We augment these responses so "uploaded" appears
+    // as a valid subdirectory (works both locally and on static hosts
+    // where these index files may not exist at all).
+    if (url === "/data/index.json") {
+      return realFetch.call(this, input, init)
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({}))
+        .then((idx) => {
+          idx.games = idx.games || {};
+          return new Response(JSON.stringify(idx), {
+            headers: { "Content-Type": "application/json" },
+          });
+        });
+    }
+
+    if (url === "/data/games/index.json") {
+      return realFetch.call(this, input, init)
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({}))
+        .then((idx) => {
+          idx.uploaded = {};
+          return new Response(JSON.stringify(idx), {
+            headers: { "Content-Type": "application/json" },
+          });
+        });
+    }
+
+    // Requests under the uploaded game path — serve from memory.
     if (!url.startsWith(GAME_PATH + "/")) {
       return realFetch.call(this, input, init);
     }
