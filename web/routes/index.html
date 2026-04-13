@@ -14,7 +14,7 @@
         <p class="brief__eyebrow">AGENT BRIEFING</p>
         <h1 class="brief__title">agent-game-harness</h1>
         <p class="brief__subtitle">
-          Play <a href="/routes/game.html?game=monkey1"><code>/routes/game.html?game=monkey1</code></a>
+          Play <a href="/routes/game?game=monkey1"><code>/routes/game?game=monkey1</code></a>
           using the <code>window.__scumm*</code> API.
         </p>
       </header>
@@ -22,7 +22,7 @@
       <section class="brief__section">
         <h2>Quick start</h2>
         <ol>
-          <li>Navigate to <code>/routes/game.html?game=monkey1</code></li>
+          <li>Navigate to <code>/routes/game?game=monkey1</code></li>
           <li>Wait for <code>__scummActionsReady()</code> to return true</li>
           <li>Read state: <code>__scummRead()</code></li>
           <li>Act: <code>__scummDoSentence({verb, objectA})</code></li>
@@ -134,8 +134,8 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
     <script id="agent-brief" type="application/json">
 {
   "version": 6,
-  "mission": "Play the adventure game at /routes/game.html?game=monkey1 using the window.__scumm* API.",
-  "gameRoute": "/routes/game.html?game=monkey1",
+  "mission": "Play the adventure game at /routes/game?game=monkey1 using the window.__scumm* API.",
+  "gameRoute": "/routes/game?game=monkey1",
   "api": {
     "read": {
       "__scummRead()": "Full state snapshot",
