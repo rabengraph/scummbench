@@ -3,10 +3,12 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "public": true,
-  "buildCommand": null,
+  "buildCommand": "./scripts/vercel-build.sh",
   "outputDirectory": "web",
+  "redirects": [
+    { "source": "/", "destination": "/routes" }
+  ],
   "rewrites": [
-    { "source": "/", "destination": "/routes/index.html" },
     { "source": "/game", "destination": "/routes/game.html" },
     { "source": "/status", "destination": "/routes/status.html" }
   ],

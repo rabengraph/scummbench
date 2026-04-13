@@ -6,6 +6,7 @@
   "description": "Agent-first browser harness for ScummVM with symbolic state for AI agents",
   "scripts": {
     "bootstrap": "./scripts/bootstrap.sh",
+    "build": "./scripts/vercel-build.sh",
     "build:scummvm": "./scripts/build-scummvm.sh",
     "dev": "./scripts/start-dev.sh",
     "start": "./scripts/start-dev.sh",
