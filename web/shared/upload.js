@@ -157,10 +157,19 @@ function bootEngine() {
   window.Module = window.Module || {};
   window.Module.canvas = document.getElementById("canvas");
 
+  // Show the "Loading game…" overlay (set up in game/index.html).
+  // The overlay hides itself on the first `scumm:state` event that
+  // bridge.js dispatches once the engine starts publishing snapshots.
+  if (typeof window.__scummShowLoading === "function") {
+    window.__scummShowLoading();
+  }
+
   const s = document.createElement("script");
   s.src = "/public/scummvm/scummvm.js";
   s.async = true;
   s.onerror = () => {
+    const loading = document.getElementById("game-loading");
+    if (loading) loading.hidden = true;
     const el = document.getElementById("scumm-missing");
     if (el) el.hidden = false;
   };

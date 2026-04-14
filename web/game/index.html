@@ -47,6 +47,17 @@
         <div id="scumm-stage" class="game__stage">
           <canvas id="canvas" width="640" height="400"></canvas>
           <div id="scumm-overlay" class="game__overlay" aria-hidden="true"></div>
+          <!--
+            Loading overlay. Shown while the WASM runtime downloads +
+            initializes (typically 5-10s). Hidden on the first
+            `scumm:state` event (bridge.js dispatches it from
+            __scummPublish, which the fork calls once the engine is up).
+          -->
+          <div id="game-loading" class="game__loading" hidden>
+            <div class="loading__spinner" aria-hidden="true"></div>
+            <h2>Loading game&hellip;</h2>
+            <p>Initializing ScummVM runtime (usually 5-10 seconds).</p>
+          </div>
           <div id="scumm-missing" class="game__missing" hidden>
             <h2>ScummVM runtime not built</h2>
             <p>
@@ -56,7 +67,21 @@
             </p>
           </div>
         </div>
-        <button id="panel-toggle" class="panel__toggle" aria-label="Toggle state panel">state</button>
+        <div class="panel__controls">
+          <!--
+            Skip button. Dispatches a synthetic Escape keydown/keyup
+            to window + document so SDL3's emscripten backend picks it
+            up the same as a real key press. Handy for mobile where
+            there's no physical ESC key to skip cutscenes/intros.
+          -->
+          <button id="skip-btn" class="panel__toggle panel__toggle--skip"
+                  type="button"
+                  aria-label="Skip cutscene (sends Escape key)"
+                  title="Skip cutscene (Escape)">skip</button>
+          <button id="panel-toggle" class="panel__toggle"
+                  type="button"
+                  aria-label="Toggle state panel">state</button>
+        </div>
         <aside id="scumm-panel" class="game__panel" aria-live="polite">
           <!-- state-panel.js fills this -->
         </aside>
@@ -64,8 +89,47 @@
     </main>
 
     <script>
+      // Panel toggle — collapse/expand the state panel.
       document.getElementById("panel-toggle").addEventListener("click", function () {
         document.querySelector(".game__stage-wrap").classList.toggle("game__stage-wrap--collapsed");
+      });
+
+      // Skip button — send a synthetic Escape keypress to the engine.
+      // SDL3's emscripten backend listens for keydown on window/document,
+      // so dispatching the event there is equivalent to a real ESC press.
+      // Primary use case: mobile, where there is no physical ESC key.
+      document.getElementById("skip-btn").addEventListener("click", function () {
+        const init = {
+          key: "Escape",
+          code: "Escape",
+          keyCode: 27,
+          which: 27,
+          bubbles: true,
+          cancelable: true,
+        };
+        const targets = [
+          document.getElementById("canvas"),
+          document,
+          window,
+        ];
+        for (const target of targets) {
+          if (!target) continue;
+          target.dispatchEvent(new KeyboardEvent("keydown", init));
+          target.dispatchEvent(new KeyboardEvent("keyup", init));
+        }
+      });
+
+      // Loading overlay — hidden by default, shown by the runtime
+      // loaders below (upload.js or the inline ?game= loader). Hidden
+      // as soon as the bridge fires its first snapshot.
+      window.__scummShowLoading = function showLoading() {
+        const el = document.getElementById("game-loading");
+        if (el) el.hidden = false;
+      };
+      window.addEventListener("scumm:state", function onFirstState() {
+        const el = document.getElementById("game-loading");
+        if (el) el.hidden = true;
+        window.removeEventListener("scumm:state", onFirstState);
       });
     </script>
 
@@ -192,10 +256,16 @@
         window.Module = window.Module || {};
         window.Module.canvas = document.getElementById("canvas");
 
+        if (typeof window.__scummShowLoading === "function") {
+          window.__scummShowLoading();
+        }
+
         const s = document.createElement("script");
         s.src = "/public/scummvm/scummvm.js";
         s.async = true;
         s.onerror = function () {
+          const loading = document.getElementById("game-loading");
+          if (loading) loading.hidden = true;
           const missing = document.getElementById("scumm-missing");
           if (missing) missing.hidden = false;
         };

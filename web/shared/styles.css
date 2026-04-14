@@ -147,8 +147,15 @@ pre {
   .game__stage-wrap {
     grid-template-columns: 1fr;
   }
-  .game__stage-wrap .panel__toggle {
+  .game__stage-wrap .panel__controls {
+    flex-direction: row;
     justify-self: end;
+    margin-top: 8px;
+  }
+  .game__stage-wrap .panel__controls .panel__toggle {
+    writing-mode: horizontal-tb;
+    min-width: 56px;
+    padding: 8px 12px;
   }
 }
 
@@ -230,6 +237,54 @@ pre {
   margin: 0 0 8px;
 }
 
+/* ---------- loading overlay (shown during WASM boot) ---------- */
+
+.game__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--accent);
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 2;
+}
+
+.game__loading[hidden] {
+  display: none;
+}
+
+.game__loading h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.game__loading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.loading__spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(92, 200, 255, 0.15);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: loading-spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .game__panel {
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
@@ -281,6 +336,13 @@ pre {
   font-size: 11px;
 }
 
+.panel__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: start;
+}
+
 .panel__toggle {
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
@@ -299,6 +361,15 @@ pre {
 .panel__toggle:hover {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.panel__toggle--skip {
+  color: var(--warn);
+}
+
+.panel__toggle--skip:hover {
+  color: var(--warn);
+  border-color: var(--warn);
 }
 
 /* ---------- upload ---------- */
