@@ -15,7 +15,7 @@
         <h1 class="brief__title">Scummbar Game Harness</h1>
         <p class="brief__subtitle">
           Harness for ScummVM games. Play the
-          <a href="/game?game=monkey1"><code>Monkey Island 1 demo</code></a>
+          <a href="/game?game=monkey1-demo"><code>Monkey Island 1 demo</code></a>
           or <a href="/game">upload your own game</a>, then drive it
           through the <code>window.__scumm*</code> API.
         </p>
@@ -25,7 +25,7 @@
         <h2>Quick start</h2>
         <ol>
           <li>Open a game — either the pre-baked
-            <a href="/game?game=monkey1"><code>/game?game=monkey1</code></a>
+            <a href="/game?game=monkey1-demo"><code>/game?game=monkey1-demo</code></a>
             (Monkey Island 1 demo) or
             <a href="/game"><code>/game</code></a> to upload your own
             ScummVM game folder.</li>
@@ -156,7 +156,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
   "gameRoute": "/game",
   "mockRoute": "/game?mock=1",
   "prebakedGames": [
-    { "id": "monkey1", "title": "The Secret of Monkey Island (demo)", "url": "/game?game=monkey1" }
+    { "id": "monkey1-demo", "title": "The Secret of Monkey Island (demo)", "url": "/game?game=monkey1-demo" }
   ],
   "uploadGame": "/game  (shows an upload UI when no ?game= param is set)",
   "localPreStagedGame": "/game?game=<id>  (any id added locally via scripts/add-game.sh)",
