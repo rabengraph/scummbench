@@ -629,6 +629,33 @@ const RECORD_HIGH_SIGNAL_TOP_KEYS = new Set([
   "room",          // room transition
 ]);
 
+// Sub-paths that also survive the oscillation filter. Actor and ego
+// spatial state (pos, room, walking) commonly oscillates during normal
+// gameplay (a bird's flight zigzags, idle bob on pos.y, an NPC walks
+// and stops and walks again) but is high-signal — the agent needs the
+// trajectory to reason about spatial events. Object-level animation
+// (roomObjects.state cycling) is NOT on this list — that's the noise
+// the filter is designed to suppress.
+function isActorSubPath(path) {
+  // ["actors", {id: N}, leaf, ...]
+  if (path.length < 3) return false;
+  if (path[0] !== "actors" && path[0] !== "ego") return false;
+  const leafIndex = path[0] === "ego" ? 1 : 2;
+  if (
+    path[0] === "actors" &&
+    (typeof path[1] !== "object" || path[1] === null || !("id" in path[1]))
+  ) return false;
+  const leaf = path[leafIndex];
+  return leaf === "pos" || leaf === "room" || leaf === "walking";
+}
+
+function isHighSignalPath(path) {
+  if (path.length === 1 && RECORD_HIGH_SIGNAL_TOP_KEYS.has(path[0])) {
+    return true;
+  }
+  return isActorSubPath(path);
+}
+
 const recorder = {
   timer: null,
   intervalMs: 0,
@@ -867,10 +894,8 @@ window.__scummRecordSummary = function recordSummary(options) {
   let filteredAnimationPaths = 0;
   for (const rec of byPath.values()) {
     const oscillated = rec.seenKeys.size < rec.ticks + 1;
-    const isHighSignal =
-      rec.path.length === 1 &&
-      RECORD_HIGH_SIGNAL_TOP_KEYS.has(rec.path[0]);
-    if (oscillated && !includeAnimation && !isHighSignal) {
+    const highSignal = isHighSignalPath(rec.path);
+    if (oscillated && !includeAnimation && !highSignal) {
       filteredAnimationPaths++;
       continue;
     }
@@ -883,7 +908,7 @@ window.__scummRecordSummary = function recordSummary(options) {
     };
     // For oscillated high-signal paths, include every distinct value
     // seen during the window. Otherwise `from`/`to` are the full story.
-    if (oscillated && isHighSignal) {
+    if (oscillated && highSignal) {
       row.seenValues = rec.seenValues;
     }
     changes.push(row);

@@ -72,7 +72,12 @@
           <tr><td><code>__scummRecordClear()</code></td><td>Drop all buffered entries.</td></tr>
         </table>
         <p>Paths are JSON-pointer-style arrays. For the id-keyed top-level arrays (<code>roomObjects</code>, <code>inventory</code>, <code>verbs</code>, <code>dialogChoices</code>, <code>actors</code>) items are matched by <code>id</code>, so segments are <code>{id: N}</code> — e.g. <code>["roomObjects", {id: 10}, "box", "x"]</code>. <code>op</code> is <code>"add"</code> or <code>"remove"</code> on membership changes in the per-tick log.</p>
-        <p><strong>Transient messages are never treated as animation.</strong> High-signal top-level keys — <code>msgText</code>, <code>haveMsg</code>, <code>talkingActor</code>, <code>inputLocked</code>, <code>inCutscene</code>, <code>room</code> — bypass the oscillation filter, and for those paths the summary adds a <code>seenValues</code> array with every distinct value the path held during the window (so a message that flashed "bird will peck my hand off" is reported in full, not lost as "null → null").</p>
+        <p><strong>Transient messages and spatial motion are never treated as animation.</strong> High-signal paths bypass the oscillation filter and include a <code>seenValues</code> array of every distinct value the path held during the window. These are:</p>
+        <ul>
+          <li>Top-level scalars: <code>msgText</code>, <code>haveMsg</code>, <code>talkingActor</code>, <code>inputLocked</code>, <code>inCutscene</code>, <code>room</code></li>
+          <li>Spatial sub-paths: <code>actors.{id}.pos</code>, <code>actors.{id}.room</code>, <code>actors.{id}.walking</code>, and the <code>ego.pos</code> / <code>ego.room</code> / <code>ego.walking</code> equivalents</li>
+        </ul>
+        <p>So an NPC that zigzags across the room reports its full <code>pos.x</code> / <code>pos.y</code> trajectory in <code>seenValues</code>, and a message that flashed is reported in full rather than lost as "null → null". Object-level <code>state</code> flips (fog, candles, flames) are NOT on this list — they stay filtered as animation noise.</p>
       </section>
 
       <section class="brief__section">
@@ -170,7 +175,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
 
     <script id="agent-brief" type="application/json">
 {
-  "version": 13,
+  "version": 14,
   "name": "ScummBench",
   "tagline": "Harness for ScummVM games.",
   "mission": "Play the adventure game at /game using the window.__scumm* API. Start with the pre-baked Monkey Island 1 demo or upload your own game.",
@@ -209,7 +214,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
     "record": {
       "__scummRecordStart({intervalMs?, clear?})": "Start polling snapshot at intervalMs (default 200, min 50). Buffers a diff per tick.",
       "__scummRecordStop()": "Stop polling. Entries remain readable.",
-      "__scummRecordSummary({includeAnimation?})": "PREFERRED READ. { windowMs, ticksRecorded, changes, filteredAnimationPaths }. Each change is { path, from, to, ticks, oscillated }, plus seenValues when the change is on a high-signal path (msgText, haveMsg, talkingActor, inputLocked, inCutscene, room) — those bypass the oscillation filter so a transient message is preserved with full text. Drops other oscillating (animation) paths by default.",
+      "__scummRecordSummary({includeAnimation?})": "PREFERRED READ. { windowMs, ticksRecorded, changes, filteredAnimationPaths }. Each change is { path, from, to, ticks, oscillated }, plus seenValues on high-signal paths. High-signal = top-level msgText/haveMsg/talkingActor/inputLocked/inCutscene/room AND spatial actors.{id}.pos|room|walking / ego.pos|room|walking. Those bypass the oscillation filter so transient messages and actor movement trajectories are preserved. Object-level state flips (candles, fog) stay filtered as animation noise.",
       "__scummRecordRead(sinceIndex?)": "PER-TICK LOG (verbose). { startedAt, entries, nextIndex, total, running } — each entry is { dt, diff: [{path, from, to, op?}] }. dt is ms offset from startedAt (absolute time = startedAt + dt). Use only for forensic replay; use Summary for decision-making.",
       "__scummRecordStatus()": "{ running, intervalMs, entries, startedAt }",
       "__scummRecordClear()": "Drop buffered entries",

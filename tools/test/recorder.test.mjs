@@ -355,6 +355,87 @@ describe("summary collapses per-tick noise to net change", () => {
     assert.equal(summary.filteredAnimationPaths, 1);
   });
 
+  it("actor pos oscillation (idle bob, zigzag flight) is preserved with seenValues", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      actors: [{ id: 7, name: "bird", pos: { x: 100, y: 50 }, walking: false, room: 5 }],
+    });
+    win.__scummRecordStart();
+    tick();
+    // Bird bobs vertically (y oscillates) while moving horizontally (x monotonic).
+    for (const [x, y] of [[120, 48], [140, 50], [160, 48], [180, 50]]) {
+      win.__scummPublish({
+        schema: 1, seq: 1,
+        actors: [{ id: 7, name: "bird", pos: { x, y }, walking: true, room: 5 }],
+      });
+      tick();
+    }
+    const summary = win.__scummRecordSummary();
+    const yRow = summary.changes.find(
+      (c) => c.path[0] === "actors" && c.path[2] === "pos" && c.path[3] === "y"
+    );
+    assert.ok(yRow, "actor pos.y should survive oscillation filter");
+    assert.equal(yRow.oscillated, true);
+    assert.deepEqual(plain(yRow.seenValues), [50, 48]);
+  });
+
+  it("actor walking flag (false -> true -> false) survives as high-signal", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      actors: [{ id: 7, name: "bird", pos: { x: 0, y: 0 }, walking: false, room: 5 }],
+    });
+    win.__scummRecordStart();
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      actors: [{ id: 7, name: "bird", pos: { x: 10, y: 0 }, walking: true, room: 5 }],
+    });
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      actors: [{ id: 7, name: "bird", pos: { x: 20, y: 0 }, walking: false, room: 5 }],
+    });
+    tick();
+    const summary = win.__scummRecordSummary();
+    const walkRow = summary.changes.find(
+      (c) => c.path[0] === "actors" && c.path[2] === "walking"
+    );
+    assert.ok(walkRow);
+    assert.deepEqual(plain(walkRow.seenValues), [false, true]);
+  });
+
+  it("roomObjects.state oscillation stays filtered (not on the whitelist)", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      roomObjects: [{ id: 300, name: "torch", state: 0 }],
+      actors: [{ id: 7, name: "bird", pos: { x: 0, y: 0 }, walking: false, room: 5 }],
+    });
+    win.__scummRecordStart();
+    tick();
+    // Torch oscillates, bird zigzags and ends where it started.
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      roomObjects: [{ id: 300, name: "torch", state: 1 }],
+      actors: [{ id: 7, name: "bird", pos: { x: 5, y: 0 }, walking: false, room: 5 }],
+    });
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      roomObjects: [{ id: 300, name: "torch", state: 0 }],
+      actors: [{ id: 7, name: "bird", pos: { x: 0, y: 0 }, walking: false, room: 5 }],
+    });
+    tick();
+    const summary = win.__scummRecordSummary();
+    // torch.state filtered; bird pos.x survives with its trajectory
+    assert.equal(summary.filteredAnimationPaths, 1);
+    const xRow = summary.changes.find((c) => c.path[0] === "actors" && c.path[3] === "x");
+    assert.ok(xRow);
+    assert.deepEqual(plain(xRow.seenValues), [0, 5]);
+  });
+
   it("seenValues reports each distinct message in first-seen order", () => {
     const { win, tick } = loadBridge();
     win.__scummPublish({ schema: 1, seq: 1, msgText: null });
