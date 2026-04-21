@@ -11,6 +11,13 @@
   </head>
   <body class="page page-home">
     <main class="brief">
+      <aside class="brief__callout" role="note" aria-label="How to read this briefing">
+        <p class="brief__callout-title"><strong>STOP — do not screenshot this page.</strong></p>
+        <p>You are an agent. This whole briefing is already parsed JSON on the page. Read it with one eval:</p>
+        <pre class="brief__callout-code"><code>window.__agentBrief</code></pre>
+        <p class="brief__callout-hint">Every route, API, state field, event, strategy rule is in that object. Screenshotting costs image tokens and garbles code and JSON. Fallback (before <code>__agentBrief</code> populates): <code>JSON.parse(document.getElementById("agent-brief").textContent)</code>. From another page: <code>fetch("/briefing")</code> and extract <code>#agent-brief</code>.</p>
+      </aside>
+
       <header class="brief__header">
         <p class="brief__eyebrow">AGENT BRIEFING</p>
         <h1 class="brief__title">ScummBench</h1>
@@ -53,6 +60,27 @@
       </section>
 
       <section class="brief__section">
+        <h2>Record API — state changes over time</h2>
+        <p>Poll the snapshot at a configurable interval and buffer structural diffs between ticks. Useful for catching transient changes that don't emit events — e.g. an NPC walking, or an object animating after a trigger (step on the wood, the bird flies away).</p>
+        <p><strong>Use <code>__scummRecordSummary()</code> to read.</strong> It returns net-change-per-path across the whole window and drops oscillating paths (SCUMM animates by flipping <code>state</code> between 0 and 1 each tick — dozens of noise rows per second). <code>__scummRecordRead()</code> returns the per-tick log; use it only for forensic replay.</p>
+        <table>
+          <tr><td><code>__scummRecordStart({intervalMs?, clear?})</code></td><td>Start polling. Default interval 200ms, min 50ms. Clears prior buffer unless <code>clear:false</code>.</td></tr>
+          <tr><td><code>__scummRecordStop()</code></td><td>Stop polling. Entries remain readable.</td></tr>
+          <tr><td><code>__scummRecordSummary({includeAnimation?})</code></td><td><strong>Preferred.</strong> Returns <code>{windowMs, ticksRecorded, changes, filteredAnimationPaths}</code>. Each change is <code>{path, from, to, ticks, oscillated}</code>. Oscillating paths are dropped unless <code>includeAnimation:true</code>.</td></tr>
+          <tr><td><code>__scummRecordRead(sinceIndex?)</code></td><td>Per-tick log (verbose). Returns <code>{startedAt, entries, nextIndex, total, running}</code>. Each entry is <code>{dt, diff: [{path, from, to, op?}]}</code> where <code>dt</code> is ms offset from <code>startedAt</code>.</td></tr>
+          <tr><td><code>__scummRecordStatus()</code></td><td><code>{running, intervalMs, entries, startedAt}</code></td></tr>
+          <tr><td><code>__scummRecordClear()</code></td><td>Drop all buffered entries.</td></tr>
+        </table>
+        <p>Paths are JSON-pointer-style arrays. For the id-keyed top-level arrays (<code>roomObjects</code>, <code>inventory</code>, <code>verbs</code>, <code>dialogChoices</code>, <code>actors</code>) items are matched by <code>id</code>, so segments are <code>{id: N}</code> — e.g. <code>["roomObjects", {id: 10}, "box", "x"]</code>. <code>op</code> is <code>"add"</code> or <code>"remove"</code> on membership changes in the per-tick log.</p>
+        <p><strong>Transient messages and spatial motion are never treated as animation.</strong> High-signal paths bypass the oscillation filter and include a <code>seenValues</code> array of every distinct value the path held during the window. These are:</p>
+        <ul>
+          <li>Top-level scalars: <code>msgText</code>, <code>haveMsg</code>, <code>talkingActor</code>, <code>inputLocked</code>, <code>inCutscene</code>, <code>room</code></li>
+          <li>Spatial sub-paths: <code>actors.{id}.pos</code>, <code>actors.{id}.room</code>, <code>actors.{id}.walking</code>, and the <code>ego.pos</code> / <code>ego.room</code> / <code>ego.walking</code> equivalents</li>
+        </ul>
+        <p>So an NPC that zigzags across the room reports its full <code>pos.x</code> / <code>pos.y</code> trajectory in <code>seenValues</code>, and a message that flashed is reported in full rather than lost as "null → null". Object-level <code>state</code> flips (fog, candles, flames) are NOT on this list — they stay filtered as animation noise.</p>
+      </section>
+
+      <section class="brief__section">
         <h2>Action API</h2>
         <table>
           <tr><td><code>__scummDoSentence({verb, objectA, objectB?})</code></td><td>Preferred. Atomic verb+object, auto-walks ego.</td></tr>
@@ -87,6 +115,7 @@
           <li><code>dialogChoicesChanged</code> — dialog options updated</li>
           <li><code>inputLockChanged</code> — cutscene started/ended</li>
         </ul>
+        <p class="panel__hint"><strong>Events are coarse, not exhaustive.</strong> The stream covers the major engine-level transitions above and nothing else. It does <em>not</em> emit for: NPC movement along a path, transient flavor messages that auto-dismiss (the flavour text a game shows when you step on something), object animation frames, or per-object state flips. For exact observation of those, use the recorder (<code>__scummRecordSummary</code>).</p>
       </section>
 
       <section class="brief__section">
@@ -133,6 +162,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
           <li>Prefer <code>doSentence</code> over clickAt.</li>
           <li>Use events (not polling state) to detect action results.</li>
           <li>Avoid repeating failed actions.</li>
+          <li><strong>Never write an unbounded polling loop.</strong> If you wait on a condition (<code>bird.pos.x &gt; 280 &amp;&amp; !inputLocked</code>, <code>haveMsg === 0</code>, etc.) and it never holds, the Promise hangs the entire tool call. Always include a hard timeout (<code>Date.now() - start &gt; 8000</code>) — or skip polling entirely and use a fixed <code>setTimeout</code> + <code>__scummRecordSummary()</code>, which captures everything that happened in the window without waiting on a specific state.</li>
         </ol>
       </section>
 
@@ -145,10 +175,17 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
 
     <script id="agent-brief" type="application/json">
 {
-  "version": 8,
+  "version": 14,
   "name": "ScummBench",
   "tagline": "Harness for ScummVM games.",
   "mission": "Play the adventure game at /game using the window.__scumm* API. Start with the pre-baked Monkey Island 1 demo or upload your own game.",
+  "howToRead": {
+    "doNotScreenshot": "This briefing is text. Screenshotting it costs image tokens and garbles code and JSON. Parse the page instead.",
+    "preferred": "window.__agentBrief — this whole object, already parsed, populated on briefing load.",
+    "fallback": "JSON.parse(document.getElementById('agent-brief').textContent) — use if window.__agentBrief has not populated yet.",
+    "fromOtherPage": "fetch('/briefing').then(r => r.text()).then(html => JSON.parse(html.match(/<script id=\"agent-brief\"[^>]*>([\\s\\S]*?)<\\/script>/)[1])) — use from /game or /status to read the brief without navigating.",
+    "canonical": "This JSON is the full API surface. The prose sections in the HTML elaborate but add no API-correctness information."
+  },
   "routes": {
     "briefing": "/briefing",
     "game": "/game",
@@ -173,6 +210,16 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
       "__scummSkipMessage()": "Dismiss current dialog text",
       "__scummWalkTo(x, y)": "Walk ego to room coords",
       "__scummClickAt(x, y)": "Last resort click"
+    },
+    "record": {
+      "__scummRecordStart({intervalMs?, clear?})": "Start polling snapshot at intervalMs (default 200, min 50). Buffers a diff per tick.",
+      "__scummRecordStop()": "Stop polling. Entries remain readable.",
+      "__scummRecordSummary({includeAnimation?})": "PREFERRED READ. { windowMs, ticksRecorded, changes, filteredAnimationPaths }. Each change is { path, from, to, ticks, oscillated }, plus seenValues on high-signal paths. High-signal = top-level msgText/haveMsg/talkingActor/inputLocked/inCutscene/room AND spatial actors.{id}.pos|room|walking / ego.pos|room|walking. Those bypass the oscillation filter so transient messages and actor movement trajectories are preserved. Object-level state flips (candles, fog) stay filtered as animation noise.",
+      "__scummRecordRead(sinceIndex?)": "PER-TICK LOG (verbose). { startedAt, entries, nextIndex, total, running } — each entry is { dt, diff: [{path, from, to, op?}] }. dt is ms offset from startedAt (absolute time = startedAt + dt). Use only for forensic replay; use Summary for decision-making.",
+      "__scummRecordStatus()": "{ running, intervalMs, entries, startedAt }",
+      "__scummRecordClear()": "Drop buffered entries",
+      "pathFormat": "Paths are arrays. Items in roomObjects/inventory/verbs/dialogChoices/actors are matched by id, so segments for those arrays are {id:N} objects (stable across reorderings).",
+      "useFor": "Detect transient changes without dedicated events (NPC movement, object animation after a trigger). Always prefer Summary over Read."
     }
   },
   "stateFields": [
@@ -193,6 +240,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
     "dialogChoicesChanged — dialog options updated",
     "inputLockChanged — cutscene start/end"
   ],
+  "eventsAreCoarse": "The event stream covers the engine-level transitions above and nothing else. It does NOT emit for: NPC movement, transient flavor messages that auto-dismiss, animation frames, or per-object state flips. For exact observation of those, start __scummRecordStart and read __scummRecordSummary.",
   "strategy": [
     "Use __scummRead() as primary orientation — inspect room objects, actors, verbs, inventory. Do NOT screenshot for routine orientation.",
     "Use __scummEventsSince(cursor) to catch up on what happened after actions — much cheaper than full state reads or screenshots.",
@@ -207,7 +255,8 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
     "Check inputLocked before each action",
     "Prefer doSentence over clickAt",
     "Use events to detect results, not state polling",
-    "Avoid repeating failed actions"
+    "Avoid repeating failed actions",
+    "Never write an unbounded polling loop — if your exit condition never becomes true, the Promise hangs the whole tool call. Always add a hard timeout (Date.now() - start > 8000), or skip polling and use setTimeout + __scummRecordSummary() to capture the whole window without waiting on a specific state."
   ]
 }
     </script>

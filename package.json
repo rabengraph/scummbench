@@ -6,6 +6,7 @@
   "description": "ScummBench — agent-first browser harness for ScummVM games with symbolic state for AI agents",
   "scripts": {
     "bootstrap": "./scripts/bootstrap.sh",
+    "test": "node --test tools/test/*.test.mjs",
     "build": "./scripts/vercel-build.sh",
     "build:scummvm": "./scripts/build-scummvm.sh",
     "dev": "./scripts/start-dev.sh",

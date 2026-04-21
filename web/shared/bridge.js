@@ -565,6 +565,407 @@ window.__scummActionsReady = function actionsReady() {
   );
 };
 
+// --------------------------------------------------------------------------
+// State change recorder — polling-based diff over time
+// --------------------------------------------------------------------------
+// Polls the current snapshot at a configurable interval and buffers a
+// structural diff of every tick that differs from the previous one. Lets
+// agents detect transient changes that don't emit dedicated events — e.g.
+// an NPC walking across the room, an object's bounding box shifting after
+// a trigger fires ("step on the wood, the bird flies away").
+//
+// Typical flow:
+//   __scummRecordStart({ intervalMs: 200 });
+//   __scummDoSentence({ verb, objectA });   // do something
+//   // ...wait...
+//   __scummRecordStop();
+//   const { entries } = __scummRecordRead();
+//
+// Each entry is { t, ms, diff: [{ path, from, to }] } so only what
+// changed between ticks is reported, not the full snapshot.
+
+const RECORD_CAP = 1000;
+const RECORD_DEFAULT_INTERVAL_MS = 200;
+const RECORD_MIN_INTERVAL_MS = 50;
+
+// Top-level fields that change every tick. Skipping them keeps the diff
+// focused on meaningful state (room objects, ego, actors, ...) rather
+// than timestamps/sequence numbers.
+const RECORD_IGNORE_TOP_KEYS = new Set([
+  "receivedAt",
+  "seq",
+  "t",
+  "tick",
+  "schema",
+]);
+
+// Top-level arrays whose items are id-keyed. The diff matches items
+// between ticks by `id` rather than by array index, so a mid-array
+// insert or a reordering does not produce a cascade of false diffs
+// and the path (e.g. ["roomObjects", {id: 10}, "box", "x"]) stays
+// semantically stable across ticks.
+const RECORD_ID_KEYED_ARRAYS = new Set([
+  "roomObjects",
+  "inventory",
+  "verbs",
+  "dialogChoices",
+  "actors",
+]);
+
+// Top-level scalar paths that carry high-signal gameplay transitions
+// and must NOT be hidden by the oscillation filter. A transient
+// message (msgText null -> text -> null) matches the oscillation
+// pattern by coincidence but is the opposite of noise — losing it is
+// losing the main signal the game is trying to communicate.
+// For these paths, even when oscillated, the summary reports every
+// distinct value seen in `seenValues` so the full transcript is
+// preserved.
+const RECORD_HIGH_SIGNAL_TOP_KEYS = new Set([
+  "msgText",       // transient flavour / NPC text
+  "haveMsg",       // 0/255/1 lifecycle of a message
+  "talkingActor",  // who is speaking
+  "inputLocked",   // control boundaries (cutscene enter/exit)
+  "inCutscene",
+  "room",          // room transition
+]);
+
+// Sub-paths that also survive the oscillation filter. Actor and ego
+// spatial state (pos, room, walking) commonly oscillates during normal
+// gameplay (a bird's flight zigzags, idle bob on pos.y, an NPC walks
+// and stops and walks again) but is high-signal — the agent needs the
+// trajectory to reason about spatial events. Object-level animation
+// (roomObjects.state cycling) is NOT on this list — that's the noise
+// the filter is designed to suppress.
+function isActorSubPath(path) {
+  if (path.length < 2) return false;
+  if (path[0] !== "actors" && path[0] !== "ego") return false;
+  let leafIndex;
+  if (path[0] === "ego") {
+    // ["ego", leaf, ...] — length 2 valid for ego.walking / ego.room
+    leafIndex = 1;
+  } else {
+    // ["actors", {id: N}, leaf, ...] — length 3 minimum, id segment required
+    if (path.length < 3) return false;
+    if (
+      typeof path[1] !== "object" ||
+      path[1] === null ||
+      !("id" in path[1])
+    ) return false;
+    leafIndex = 2;
+  }
+  const leaf = path[leafIndex];
+  return leaf === "pos" || leaf === "room" || leaf === "walking";
+}
+
+function isHighSignalPath(path) {
+  if (path.length === 1 && RECORD_HIGH_SIGNAL_TOP_KEYS.has(path[0])) {
+    return true;
+  }
+  return isActorSubPath(path);
+}
+
+const recorder = {
+  timer: null,
+  intervalMs: 0,
+  startedAt: null,
+  lastSnapshot: null,
+  entries: [],
+};
+
+function allItemsHaveId(arr) {
+  for (const item of arr) {
+    if (!item || typeof item !== "object" || item.id == null) return false;
+  }
+  return true;
+}
+
+function diffArrayById(a, b, path) {
+  const out = [];
+  const aById = new Map();
+  for (const item of a) aById.set(item.id, item);
+  const seen = new Set();
+  for (const bItem of b) {
+    const id = bItem.id;
+    seen.add(id);
+    if (!aById.has(id)) {
+      out.push({ path: [...path, { id }], from: undefined, to: bItem, op: "add" });
+    } else {
+      const sub = deepDiff(aById.get(id), bItem, [...path, { id }]);
+      if (sub.length) out.push(...sub);
+    }
+  }
+  for (const [id, aItem] of aById) {
+    if (!seen.has(id)) {
+      out.push({ path: [...path, { id }], from: aItem, to: undefined, op: "remove" });
+    }
+  }
+  return out;
+}
+
+function deepDiff(a, b, path) {
+  if (a === b) return [];
+  const aIsObj = a !== null && typeof a === "object";
+  const bIsObj = b !== null && typeof b === "object";
+  if (!aIsObj || !bIsObj || Array.isArray(a) !== Array.isArray(b)) {
+    return [{ path: path.slice(), from: a, to: b }];
+  }
+  const out = [];
+  if (Array.isArray(a)) {
+    // Known id-keyed top-level arrays: match by id so reorderings and
+    // mid-array inserts don't produce false diffs. Requires every item
+    // on both sides to carry an `id` — otherwise fall back to index.
+    if (
+      path.length === 1 &&
+      RECORD_ID_KEYED_ARRAYS.has(path[0]) &&
+      allItemsHaveId(a) &&
+      allItemsHaveId(b)
+    ) {
+      return diffArrayById(a, b, path);
+    }
+    const n = Math.max(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+      if (i >= a.length) {
+        out.push({ path: [...path, i], from: undefined, to: b[i], op: "add" });
+      } else if (i >= b.length) {
+        out.push({ path: [...path, i], from: a[i], to: undefined, op: "remove" });
+      } else {
+        const sub = deepDiff(a[i], b[i], [...path, i]);
+        if (sub.length) out.push(...sub);
+      }
+    }
+    return out;
+  }
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (path.length === 0 && RECORD_IGNORE_TOP_KEYS.has(k)) continue;
+    const sub = deepDiff(a[k], b[k], [...path, k]);
+    if (sub.length) out.push(...sub);
+  }
+  return out;
+}
+
+function recordTick() {
+  const snap = state.latest;
+  if (!snap) return;
+  if (!recorder.lastSnapshot) {
+    recorder.lastSnapshot = snap;
+    return;
+  }
+  if (snap === recorder.lastSnapshot) return;
+  const diff = deepDiff(recorder.lastSnapshot, snap, []);
+  recorder.lastSnapshot = snap;
+  if (diff.length === 0) return;
+  // Only per-entry `dt` (ms offset from startedAt). Absolute ISO / epoch
+  // timestamps are repeated 24+13 chars per entry — enormous at 1000
+  // entries and derivable from the response-level `startedAt`.
+  recorder.entries.push({
+    dt: Date.now() - recorder.startedAt,
+    diff,
+  });
+  if (recorder.entries.length > RECORD_CAP) {
+    recorder.entries.splice(0, recorder.entries.length - RECORD_CAP);
+  }
+}
+
+/**
+ * Start polling the snapshot and recording diffs between ticks.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.intervalMs=200] - Polling interval in ms (min 50).
+ * @param {boolean} [options.clear=true]    - Clear prior entries before starting.
+ * @returns {{ok:boolean, intervalMs:number, startedAt:string, entries:number}}
+ */
+window.__scummRecordStart = function recordStart(options) {
+  const opts = options || {};
+  const intervalMs = Math.max(
+    RECORD_MIN_INTERVAL_MS,
+    Number(opts.intervalMs) || RECORD_DEFAULT_INTERVAL_MS
+  );
+  if (recorder.timer) clearInterval(recorder.timer);
+  if (opts.clear !== false) recorder.entries = [];
+  recorder.intervalMs = intervalMs;
+  recorder.startedAt = Date.now();
+  recorder.lastSnapshot = state.latest || null;
+  recorder.timer = setInterval(recordTick, intervalMs);
+  return {
+    ok: true,
+    intervalMs,
+    startedAt: new Date(recorder.startedAt).toISOString(),
+    entries: recorder.entries.length,
+  };
+};
+
+/**
+ * Stop polling. Recorded entries remain available via __scummRecordRead().
+ * @returns {{ok:boolean, running:boolean, entries:number, durationMs:number}}
+ */
+window.__scummRecordStop = function recordStop() {
+  const durationMs = recorder.startedAt ? Date.now() - recorder.startedAt : 0;
+  if (recorder.timer) {
+    clearInterval(recorder.timer);
+    recorder.timer = null;
+  }
+  return {
+    ok: true,
+    running: false,
+    entries: recorder.entries.length,
+    durationMs,
+  };
+};
+
+/**
+ * Read recorded diff entries.
+ *
+ * @param {number} [sinceIndex=0] - Return entries at or after this index.
+ * @returns {{entries:object[], nextIndex:number, total:number, running:boolean}}
+ */
+window.__scummRecordRead = function recordRead(sinceIndex) {
+  const from = Math.max(0, Number(sinceIndex) || 0);
+  const slice = recorder.entries.slice(from);
+  return {
+    startedAt: recorder.startedAt
+      ? new Date(recorder.startedAt).toISOString()
+      : null,
+    entries: slice,
+    nextIndex: from + slice.length,
+    total: recorder.entries.length,
+    running: !!recorder.timer,
+  };
+};
+
+/**
+ * Net-change summary across the whole recording window.
+ *
+ * Agents usually want "what changed between start and stop" — not a
+ * per-tick log of every transient flip. SCUMM animates by toggling
+ * object.state between a small set of values each tick (flickering
+ * torches, idle NPC cycles, a bird flapping in place). Those produce
+ * dozens of diff rows per second, all of which revisit prior values
+ * and net out to pure animation noise.
+ *
+ * Summary collapses each path to {initial, final, ticks, oscillated}
+ * and — by default — drops paths that oscillated (revisited any prior
+ * value), which is the signature of SCUMM animation. A real gameplay
+ * event (bird flies away and stays away, door opens, item moves into
+ * inventory) is monotonic within the window and survives the filter.
+ *
+ * Use __scummRecordRead() when you need the per-tick log for forensics;
+ * use __scummRecordSummary() for decision-making.
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.includeAnimation=false] - Include paths
+ *        that revisited a prior value (animation frames). Off by
+ *        default because this is the dominant noise source.
+ * @returns {{windowMs:number, ticksRecorded:number, ticksWithChanges:number, changes:object[], filteredAnimationPaths:number}}
+ *          Each change is { path, from, to, ticks, oscillated }.
+ *          `ticks` is how many times this path moved in the window.
+ *          `oscillated` is true if at least one transition returned
+ *          to a value the path had previously held.
+ */
+window.__scummRecordSummary = function recordSummary(options) {
+  const opts = options || {};
+  const includeAnimation = opts.includeAnimation === true;
+
+  // path-string -> { path, initial, final, ticks, seenKeys, seenValues }
+  // seenKeys (Set<string>) is used for dedup; seenValues preserves the
+  // original values in first-seen order.
+  const byPath = new Map();
+  for (const entry of recorder.entries) {
+    for (const d of entry.diff) {
+      const key = JSON.stringify(d.path);
+      let rec = byPath.get(key);
+      if (!rec) {
+        const fromKey = JSON.stringify(d.from);
+        const toKey = JSON.stringify(d.to);
+        rec = {
+          path: d.path,
+          initial: d.from,
+          final: d.to,
+          ticks: 1,
+          seenKeys: new Set([fromKey, toKey]),
+          seenValues: fromKey === toKey ? [d.from] : [d.from, d.to],
+        };
+        byPath.set(key, rec);
+      } else {
+        rec.final = d.to;
+        rec.ticks += 1;
+        const toKey = JSON.stringify(d.to);
+        if (!rec.seenKeys.has(toKey)) {
+          rec.seenKeys.add(toKey);
+          rec.seenValues.push(d.to);
+        }
+      }
+    }
+  }
+
+  const changes = [];
+  let filteredAnimationPaths = 0;
+  for (const rec of byPath.values()) {
+    const oscillated = rec.seenKeys.size < rec.ticks + 1;
+    const highSignal = isHighSignalPath(rec.path);
+    if (oscillated && !includeAnimation && !highSignal) {
+      filteredAnimationPaths++;
+      continue;
+    }
+    const row = {
+      path: rec.path,
+      from: rec.initial,
+      to: rec.final,
+      ticks: rec.ticks,
+      oscillated,
+    };
+    // For oscillated high-signal paths, include every distinct value
+    // seen during the window. Otherwise `from`/`to` are the full story.
+    if (oscillated && highSignal) {
+      row.seenValues = rec.seenValues;
+    }
+    changes.push(row);
+  }
+
+  // Non-oscillating first (higher signal), then single-transition
+  // events (ticks ascending).
+  changes.sort((a, b) => {
+    if (a.oscillated !== b.oscillated) return a.oscillated ? 1 : -1;
+    return a.ticks - b.ticks;
+  });
+
+  const windowMs =
+    recorder.entries.length > 0
+      ? recorder.entries[recorder.entries.length - 1].dt
+      : 0;
+
+  return {
+    windowMs,
+    ticksRecorded: recorder.entries.length,
+    changes,
+    filteredAnimationPaths,
+  };
+};
+
+/**
+ * Drop all recorded entries. Does not affect running state.
+ * @returns {{ok:boolean, entries:number}}
+ */
+window.__scummRecordClear = function recordClear() {
+  recorder.entries = [];
+  return { ok: true, entries: 0 };
+};
+
+/**
+ * Report whether the recorder is running plus buffer stats.
+ * @returns {{running:boolean, intervalMs:number, startedAt:string|null, entries:number}}
+ */
+window.__scummRecordStatus = function recordStatus() {
+  return {
+    running: !!recorder.timer,
+    intervalMs: recorder.intervalMs,
+    startedAt: recorder.startedAt
+      ? new Date(recorder.startedAt).toISOString()
+      : null,
+    entries: recorder.entries.length,
+  };
+};
+
 // In the absence of a fork build we still want the page to be useful
 // for development. Mirror any initial JSON in #scumm-state into
 // window.__scummState so overlay/panel/tests have something to chew on.
