@@ -185,6 +185,151 @@ describe("id-keyed array diffing", () => {
   });
 });
 
+describe("summary collapses per-tick noise to net change", () => {
+  it("drops oscillating paths by default (SCUMM animation frames)", () => {
+    const { win, tick } = loadBridge();
+    // Object 300 toggles state 0/1 every tick — classic animation.
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      roomObjects: [{ id: 300, name: "torch", state: 0 }],
+    });
+    win.__scummRecordStart();
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 2,
+      roomObjects: [{ id: 300, name: "torch", state: 1 }],
+    });
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 3,
+      roomObjects: [{ id: 300, name: "torch", state: 0 }],
+    });
+    tick();
+    const summary = win.__scummRecordSummary();
+    assert.equal(summary.changes.length, 0);
+    assert.equal(summary.filteredAnimationPaths, 1);
+    // Raw log still has the flips for forensic use.
+    assert.equal(win.__scummRecordRead().total, 2);
+  });
+
+  it("keeps monotonic change that never revisits a prior value", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      roomObjects: [{ id: 10, name: "bird", box: { x: 20, y: 30 } }],
+    });
+    win.__scummRecordStart();
+    tick();
+    for (const x of [30, 45, 60]) {
+      win.__scummPublish({
+        schema: 1, seq: 1,
+        roomObjects: [{ id: 10, name: "bird", box: { x, y: 30 } }],
+      });
+      tick();
+    }
+    const summary = win.__scummRecordSummary();
+    assert.equal(summary.changes.length, 1);
+    const c = summary.changes[0];
+    assert.deepEqual(plain(c.path), ["roomObjects", { id: 10 }, "box", "x"]);
+    assert.equal(c.from, 20);
+    assert.equal(c.to, 60);
+    assert.equal(c.ticks, 3);
+    assert.equal(c.oscillated, false);
+  });
+
+  it("keeps real signal even when animation is also happening", () => {
+    const { win, tick } = loadBridge();
+    // One animating torch (oscillates) + one bird that actually moves.
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      roomObjects: [
+        { id: 300, name: "torch", state: 0 },
+        { id: 10, name: "bird", box: { x: 20, y: 30 } },
+      ],
+    });
+    win.__scummRecordStart();
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 2,
+      roomObjects: [
+        { id: 300, name: "torch", state: 1 },
+        { id: 10, name: "bird", box: { x: 40, y: 30 } },
+      ],
+    });
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 3,
+      roomObjects: [
+        { id: 300, name: "torch", state: 0 },
+        { id: 10, name: "bird", box: { x: 60, y: 30 } },
+      ],
+    });
+    tick();
+    const summary = win.__scummRecordSummary();
+    assert.equal(summary.changes.length, 1);
+    assert.equal(summary.filteredAnimationPaths, 1);
+    assert.deepEqual(plain(summary.changes[0].path), [
+      "roomObjects", { id: 10 }, "box", "x",
+    ]);
+  });
+
+  it("includeAnimation:true surfaces the oscillating paths too", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      roomObjects: [{ id: 300, name: "torch", state: 0 }],
+    });
+    win.__scummRecordStart();
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 2,
+      roomObjects: [{ id: 300, name: "torch", state: 1 }],
+    });
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 3,
+      roomObjects: [{ id: 300, name: "torch", state: 0 }],
+    });
+    tick();
+    const summary = win.__scummRecordSummary({ includeAnimation: true });
+    assert.equal(summary.changes.length, 1);
+    assert.equal(summary.changes[0].oscillated, true);
+    assert.equal(summary.changes[0].ticks, 2);
+  });
+
+  it("non-oscillating changes are sorted before oscillating ones", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({
+      schema: 1, seq: 1,
+      roomObjects: [
+        { id: 10, name: "bird", box: { x: 20, y: 30 } },
+        { id: 300, name: "torch", state: 0 },
+      ],
+    });
+    win.__scummRecordStart();
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 2,
+      roomObjects: [
+        { id: 10, name: "bird", box: { x: 40, y: 30 } },
+        { id: 300, name: "torch", state: 1 },
+      ],
+    });
+    tick();
+    win.__scummPublish({
+      schema: 1, seq: 3,
+      roomObjects: [
+        { id: 10, name: "bird", box: { x: 60, y: 30 } },
+        { id: 300, name: "torch", state: 0 },
+      ],
+    });
+    tick();
+    const summary = win.__scummRecordSummary({ includeAnimation: true });
+    assert.equal(summary.changes[0].oscillated, false);
+    assert.equal(summary.changes[1].oscillated, true);
+  });
+});
+
 describe("recorder lifecycle", () => {
   it("start and stop toggle the running flag and the scheduled timer", () => {
     const { win, isScheduled } = loadBridge();

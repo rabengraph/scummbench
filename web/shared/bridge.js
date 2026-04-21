@@ -777,6 +777,103 @@ window.__scummRecordRead = function recordRead(sinceIndex) {
 };
 
 /**
+ * Net-change summary across the whole recording window.
+ *
+ * Agents usually want "what changed between start and stop" — not a
+ * per-tick log of every transient flip. SCUMM animates by toggling
+ * object.state between a small set of values each tick (flickering
+ * torches, idle NPC cycles, a bird flapping in place). Those produce
+ * dozens of diff rows per second, all of which revisit prior values
+ * and net out to pure animation noise.
+ *
+ * Summary collapses each path to {initial, final, ticks, oscillated}
+ * and — by default — drops paths that oscillated (revisited any prior
+ * value), which is the signature of SCUMM animation. A real gameplay
+ * event (bird flies away and stays away, door opens, item moves into
+ * inventory) is monotonic within the window and survives the filter.
+ *
+ * Use __scummRecordRead() when you need the per-tick log for forensics;
+ * use __scummRecordSummary() for decision-making.
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.includeAnimation=false] - Include paths
+ *        that revisited a prior value (animation frames). Off by
+ *        default because this is the dominant noise source.
+ * @returns {{windowMs:number, ticksRecorded:number, ticksWithChanges:number, changes:object[], filteredAnimationPaths:number}}
+ *          Each change is { path, from, to, ticks, oscillated }.
+ *          `ticks` is how many times this path moved in the window.
+ *          `oscillated` is true if at least one transition returned
+ *          to a value the path had previously held.
+ */
+window.__scummRecordSummary = function recordSummary(options) {
+  const opts = options || {};
+  const includeAnimation = opts.includeAnimation === true;
+
+  // path-string -> { path, initial, final, ticks, distinctValues }
+  const byPath = new Map();
+  for (const entry of recorder.entries) {
+    for (const d of entry.diff) {
+      const key = JSON.stringify(d.path);
+      let rec = byPath.get(key);
+      if (!rec) {
+        rec = {
+          path: d.path,
+          initial: d.from,
+          final: d.to,
+          ticks: 1,
+          distinctValues: new Set([
+            JSON.stringify(d.from),
+            JSON.stringify(d.to),
+          ]),
+        };
+        byPath.set(key, rec);
+      } else {
+        rec.final = d.to;
+        rec.ticks += 1;
+        rec.distinctValues.add(JSON.stringify(d.to));
+      }
+    }
+  }
+
+  const changes = [];
+  let filteredAnimationPaths = 0;
+  for (const rec of byPath.values()) {
+    const oscillated = rec.distinctValues.size < rec.ticks + 1;
+    if (oscillated && !includeAnimation) {
+      filteredAnimationPaths++;
+      continue;
+    }
+    changes.push({
+      path: rec.path,
+      from: rec.initial,
+      to: rec.final,
+      ticks: rec.ticks,
+      oscillated,
+    });
+  }
+
+  // Non-oscillating first (higher signal), then single-transition
+  // events (ticks ascending).
+  changes.sort((a, b) => {
+    if (a.oscillated !== b.oscillated) return a.oscillated ? 1 : -1;
+    return a.ticks - b.ticks;
+  });
+
+  const lastMs =
+    recorder.entries.length > 0
+      ? recorder.entries[recorder.entries.length - 1].ms
+      : recorder.startedAt || Date.now();
+  const windowMs = recorder.startedAt ? lastMs - recorder.startedAt : 0;
+
+  return {
+    windowMs,
+    ticksRecorded: recorder.entries.length,
+    changes,
+    filteredAnimationPaths,
+  };
+};
+
+/**
  * Drop all recorded entries. Does not affect running state.
  * @returns {{ok:boolean, entries:number}}
  */

@@ -145,7 +145,7 @@ pnpm browser:eval -- "location.href='/game?game=monkey1'"
 
 **Act:** `__scummDoSentence({verb, objectA, objectB?})` (preferred — atomic, auto-walks), `__scummSelectDialog(index)`, `__scummSkipMessage()`, `__scummWalkTo(x,y)`, `__scummClickAt(x,y)` (last resort).
 
-**Record:** `__scummRecordStart({intervalMs})` / `__scummRecordStop()` / `__scummRecordRead(sinceIndex?)` / `__scummRecordStatus()` / `__scummRecordClear()` — poll the snapshot and buffer structural diffs between ticks, for catching transient changes that don't emit events (NPC animation, triggered object motion).
+**Record:** `__scummRecordStart({intervalMs})` / `__scummRecordStop()` / `__scummRecordSummary({includeAnimation?})` (**preferred read** — net change per path, drops SCUMM animation oscillation) / `__scummRecordRead(sinceIndex?)` (per-tick log, verbose — forensics only) / `__scummRecordStatus()` / `__scummRecordClear()`. Use recording to catch transient changes that don't emit events (triggered object motion, NPC walking a path).
 
 **Check:** `__scummActionsReady()` — call before first action. Check `state.inputLocked` before each action.
 
