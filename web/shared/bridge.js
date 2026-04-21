@@ -637,14 +637,22 @@ const RECORD_HIGH_SIGNAL_TOP_KEYS = new Set([
 // (roomObjects.state cycling) is NOT on this list — that's the noise
 // the filter is designed to suppress.
 function isActorSubPath(path) {
-  // ["actors", {id: N}, leaf, ...]
-  if (path.length < 3) return false;
+  if (path.length < 2) return false;
   if (path[0] !== "actors" && path[0] !== "ego") return false;
-  const leafIndex = path[0] === "ego" ? 1 : 2;
-  if (
-    path[0] === "actors" &&
-    (typeof path[1] !== "object" || path[1] === null || !("id" in path[1]))
-  ) return false;
+  let leafIndex;
+  if (path[0] === "ego") {
+    // ["ego", leaf, ...] — length 2 valid for ego.walking / ego.room
+    leafIndex = 1;
+  } else {
+    // ["actors", {id: N}, leaf, ...] — length 3 minimum, id segment required
+    if (path.length < 3) return false;
+    if (
+      typeof path[1] !== "object" ||
+      path[1] === null ||
+      !("id" in path[1])
+    ) return false;
+    leafIndex = 2;
+  }
   const leaf = path[leafIndex];
   return leaf === "pos" || leaf === "room" || leaf === "walking";
 }

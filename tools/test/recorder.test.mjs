@@ -380,6 +380,42 @@ describe("summary collapses per-tick noise to net change", () => {
     assert.deepEqual(plain(yRow.seenValues), [50, 48]);
   });
 
+  it("ego.walking (path length 2) survives as high-signal", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({ schema: 1, seq: 1, ego: { walking: false, pos: { x: 0, y: 0 } } });
+    win.__scummRecordStart();
+    tick();
+    win.__scummPublish({ schema: 1, seq: 2, ego: { walking: true,  pos: { x: 0, y: 0 } } });
+    tick();
+    win.__scummPublish({ schema: 1, seq: 3, ego: { walking: false, pos: { x: 0, y: 0 } } });
+    tick();
+    const summary = win.__scummRecordSummary();
+    const walkRow = summary.changes.find(
+      (c) => c.path[0] === "ego" && c.path[1] === "walking"
+    );
+    assert.ok(walkRow, "ego.walking should survive oscillation filter");
+    assert.deepEqual(plain(walkRow.seenValues), [false, true]);
+  });
+
+  it("ego.pos.x (path length 3) survives as high-signal", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({ schema: 1, seq: 1, ego: { walking: false, pos: { x: 0, y: 0 } } });
+    win.__scummRecordStart();
+    tick();
+    // Zigzag so pos.x oscillates.
+    for (const x of [10, 5, 10, 5]) {
+      win.__scummPublish({ schema: 1, seq: 1, ego: { walking: true, pos: { x, y: 0 } } });
+      tick();
+    }
+    const summary = win.__scummRecordSummary();
+    const xRow = summary.changes.find(
+      (c) => c.path[0] === "ego" && c.path[1] === "pos" && c.path[2] === "x"
+    );
+    assert.ok(xRow);
+    assert.equal(xRow.oscillated, true);
+    assert.deepEqual(plain(xRow.seenValues), [0, 10, 5]);
+  });
+
   it("actor walking flag (false -> true -> false) survives as high-signal", () => {
     const { win, tick } = loadBridge();
     win.__scummPublish({
