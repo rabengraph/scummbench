@@ -11,6 +11,13 @@
   </head>
   <body class="page page-home">
     <main class="brief">
+      <aside class="brief__callout" role="note" aria-label="How to read this briefing">
+        <p class="brief__callout-title"><strong>STOP — do not screenshot this page.</strong></p>
+        <p>You are an agent. This whole briefing is already parsed JSON on the page. Read it with one eval:</p>
+        <pre class="brief__callout-code"><code>window.__agentBrief</code></pre>
+        <p class="brief__callout-hint">Every route, API, state field, event, strategy rule is in that object. Screenshotting costs image tokens and garbles code and JSON. Fallback (before <code>__agentBrief</code> populates): <code>JSON.parse(document.getElementById("agent-brief").textContent)</code>. From another page: <code>fetch("/briefing")</code> and extract <code>#agent-brief</code>.</p>
+      </aside>
+
       <header class="brief__header">
         <p class="brief__eyebrow">AGENT BRIEFING</p>
         <h1 class="brief__title">ScummBench</h1>
@@ -158,10 +165,17 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
 
     <script id="agent-brief" type="application/json">
 {
-  "version": 9,
+  "version": 10,
   "name": "ScummBench",
   "tagline": "Harness for ScummVM games.",
   "mission": "Play the adventure game at /game using the window.__scumm* API. Start with the pre-baked Monkey Island 1 demo or upload your own game.",
+  "howToRead": {
+    "doNotScreenshot": "This briefing is text. Screenshotting it costs image tokens and garbles code and JSON. Parse the page instead.",
+    "preferred": "window.__agentBrief — this whole object, already parsed, populated on briefing load.",
+    "fallback": "JSON.parse(document.getElementById('agent-brief').textContent) — use if window.__agentBrief has not populated yet.",
+    "fromOtherPage": "fetch('/briefing').then(r => r.text()).then(html => JSON.parse(html.match(/<script id=\"agent-brief\"[^>]*>([\\s\\S]*?)<\\/script>/)[1])) — use from /game or /status to read the brief without navigating.",
+    "canonical": "This JSON is the full API surface. The prose sections in the HTML elaborate but add no API-correctness information."
+  },
   "routes": {
     "briefing": "/briefing",
     "game": "/game",

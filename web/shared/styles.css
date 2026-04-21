@@ -62,6 +62,39 @@ pre {
   margin-bottom: 32px;
 }
 
+.brief__callout {
+  border: 2px solid var(--accent);
+  background: rgba(255, 200, 50, 0.08);
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin: 0 0 32px;
+}
+
+.brief__callout-title {
+  color: var(--accent);
+  font-size: 16px;
+  margin: 0 0 8px;
+  letter-spacing: 0.02em;
+}
+
+.brief__callout p {
+  margin: 0 0 8px;
+}
+
+.brief__callout-code {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 8px 0;
+  font-size: 15px;
+}
+
+.brief__callout-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
 .brief__eyebrow {
   color: var(--accent);
   font-weight: 700;
