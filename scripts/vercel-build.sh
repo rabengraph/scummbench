@@ -5,14 +5,10 @@
 #
 # Cache strategy: Vercel's build cache for non-framework projects only
 # persists node_modules/ between builds (not .cache/ or vendor/). So we
-# store build caches under node_modules/.cache/. We only cache the one
-# that actually fits: scummvm-build (~63 MB). emsdk is ~1.7 GB after
-# install and alone exceeds Vercel's 1.5 GB cache cap — caching it gets
-# the entire snapshot rejected, so we reinstall it cold each build
-# (~45 s) instead. The scummvm-build artifact cache still skips the
-# ~5–7 min compile, which is the bigger win. vendor/scummvm-agent is
-# also dropped (2.7 GB even after git clean) and shallow-recloned
-# (~23 s) next build.
+# store the three expensive build caches — emsdk, the fork checkout, and
+# the ScummVM build artifacts — under node_modules/.cache/. Paths that
+# other scripts hardcode (vendor/scummvm-agent, .cache/scummvm-build)
+# are symlinked in so local dev keeps working unchanged.
 
 set -euo pipefail
 
@@ -118,16 +114,17 @@ cache_status "after build, pre-prune"
 # invalidates it, so every build starts cold.
 #
 #   scummvm-agent: the fork checkout + .git is ~2.7 GB even after
-#                  `git clean -fdX`. Drop and shallow-reclone next
-#                  build (~23 s).
-#   emsdk:         ~1.7 GB installed (clang/llvm toolchain + node +
-#                  sysroot). Over the 1.5 GB cap on its own, so we drop
-#                  the whole thing and reinstall next build (~45 s).
-#                  The scummvm-build artifact cache still skips the
-#                  ~5–7 min compile, which dominates.
+#                  `git clean -fdX`, so caching it isn't viable on the
+#                  1.5 GB plan. We drop it and shallow-reclone next
+#                  build (~22 s); the scummvm-build artifact cache
+#                  still skips the 7-min compile — the bigger win.
+#   emsdk/downloads: installer tarballs already unpacked into
+#                  upstream/ and node/. Safe to drop; emsdk won't
+#                  re-download on subsequent `emsdk install` calls as
+#                  long as the activated tools remain.
 log "pruning caches before Vercel snapshots them…"
 rm -rf "$VERCEL_CACHE/scummvm-agent"
-rm -rf "$EMSDK_DIR"
+rm -rf "$EMSDK_DIR/downloads"
 
 cache_status "after build, post-prune"
 
