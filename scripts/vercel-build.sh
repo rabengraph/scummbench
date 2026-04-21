@@ -23,6 +23,9 @@ warn() { printf "\033[1;33m[vercel-build]\033[0m %s\n" "$*" >&2; }
 # ── Cache diagnostic helper ──────────────────────────────────────────
 # Print the state of each build cache directory. Emitted before and
 # after the build so Vercel logs make cache behaviour easy to verify.
+# (Follow-up bump: triggering a second build on the same branch to
+# confirm emsdk + scummvm-build caches are restored and we skip the
+# 7-min compile.)
 cache_status() {
   local label="$1"
   log "cache status ($label):"
